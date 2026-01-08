@@ -10,6 +10,8 @@
 use crate::cortex_core::error::{CortexError, IndexError};
 use crate::cortex_core::types::Document;
 use crate::cortex_index::brute_force::{BruteForceIndex, BruteForceIndexBuilder, BruteForceIndexConfig};
+use crate::cortex_index::diskann::{DiskAnnIndexBuilder, DiskAnnIndexConfig};
+use crate::cortex_index::hnsw::{HnswIndexBuilder, HnswIndexConfig};
 use crate::cortex_index::scalar::{create_scalar_index, ScalarIndex, ScalarIndexConfig};
 use crate::cortex_index::vector::{
     DistanceMetric, VectorIndex, VectorIndexConfig, VectorIndexBuilder,
@@ -92,11 +94,51 @@ impl IndexManager {
         }
         drop(metadata);
 
-        // Create brute force index builder
-        let brute_force_config = BruteForceIndexConfig {
-            base_config: config.clone(),
+        // Determine index type from configuration
+        let index_type = config.parameters.as_ref().and_then(|p| {
+            p.get("type").and_then(|t| t.as_str())
+        }).unwrap_or("brute_force");
+
+        // Create appropriate index builder based on type
+        let builder: Box<dyn VectorIndexBuilder> = match index_type {
+            "brute_force" => {
+                let brute_force_config = BruteForceIndexConfig {
+                    base_config: config.clone(),
+                };
+                Box::new(BruteForceIndexBuilder::new(brute_force_config))
+            },
+            "hnsw" => {
+                let hnsw_config = HnswIndexConfig {
+                    base_config: config.clone(),
+                    max_connections: config.parameters.as_ref().and_then(|p| {
+                        p.get("max_connections").and_then(|v| v.as_u64()).map(|v| v as usize)
+                    }).unwrap_or(16),
+                    ef_construction: config.ef_construction.unwrap_or(100),
+                    ef_search: config.ef_search.unwrap_or(10),
+                };
+                Box::new(HnswIndexBuilder::new(hnsw_config))
+            },
+            "diskann" => {
+                let diskann_config = DiskAnnIndexConfig {
+                    base_config: config.clone(),
+                    r: config.parameters.as_ref().and_then(|p| {
+                        p.get("r").and_then(|v| v.as_u64()).map(|v| v as usize)
+                    }).unwrap_or(32),
+                    l: config.parameters.as_ref().and_then(|p| {
+                        p.get("l").and_then(|v| v.as_u64()).map(|v| v as usize)
+                    }).unwrap_or(100),
+                    path: config.parameters.as_ref().and_then(|p| {
+                        p.get("path").and_then(|v| v.as_str()).map(|s| s.to_string())
+                    }),
+                };
+                Box::new(DiskAnnIndexBuilder::new(diskann_config))
+            },
+            _ => {
+                return Err(CortexError::Index(IndexError::InvalidConfiguration(
+                    format!("Unsupported index type: {}", index_type),
+                )));
+            }
         };
-        let builder = BruteForceIndexBuilder::new(brute_force_config);
 
         // Build the index
         let index = builder.build()?;

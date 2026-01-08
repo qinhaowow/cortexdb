@@ -1,0 +1,26 @@
+apiVersion: v2
+name: cortexdb
+description: A multimodal vector database for AI applications
+type: application
+version: 0.1.0
+appVersion: 0.1.0
+keywords:
+  - database
+  - vector-database
+  - ai
+  - machine-learning
+home: https://github.com/yourusername/cortexdb
+sources:
+  - https://github.com/yourusername/cortexdb
+maintainers:
+  - name: Your Name
+    email: your.email@example.com
+dependencies:
+  - name: prometheus
+    version: "15.0.0"
+    repository: "https://prometheus-community.github.io/helm-charts"
+    condition: monitoring.prometheus.enabled
+  - name: grafana
+    version: "6.0.0"
+    repository: "https://grafana.github.io/helm-charts"
+    condition: monitoring.grafana.enabled

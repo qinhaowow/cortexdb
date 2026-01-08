@@ -1,0 +1,111 @@
+# CortexDB Helm Chart Values
+
+# Deployment Configuration
+replicaCount: 3
+
+# Image Configuration
+image:
+  repository: cortexdb
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# Service Configuration
+service:
+  type: ClusterIP
+  ports:
+    rest: 8000
+    grpc: 9000
+    pg: 5432
+
+# Ingress Configuration
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: cortexdb.example.com
+      paths:
+        - path: /
+          pathType: ImplementationSpecific
+  tls: []
+
+# Resources Configuration
+resources:
+  requests:
+    memory: "2Gi"
+    cpu: "1"
+  limits:
+    memory: "4Gi"
+    cpu: "2"
+
+# Storage Configuration
+persistence:
+  enabled: true
+  storageClass: "standard"
+  accessModes:
+    - ReadWriteOnce
+  size: "10Gi"
+
+# Configuration File
+config:
+  server:
+    host: "0.0.0.0"
+    port: 8000
+  storage:
+    data_dir: "/data"
+  index:
+    type: "hnsw"
+    m: 16
+    ef_construction: 128
+    ef_search: 64
+
+# Environment Variables
+env:
+  RUST_LOG: "info"
+  CORTEXDB_DATA_DIR: "/data"
+  CORTEXDB_CONFIG_DIR: "/config"
+
+# Monitoring Configuration
+monitoring:
+  enabled: false
+  prometheus:
+    enabled: false
+  grafana:
+    enabled: false
+    dashboard:
+      enabled: false
+
+# Security Configuration
+security:
+  enabled: false
+  tls:
+    enabled: false
+  auth:
+    enabled: false
+
+# Network Configuration
+networkPolicy:
+  enabled: false
+
+# Autoscaling Configuration
+autoscaling:
+  enabled: false
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+# Backup Configuration
+backup:
+  enabled: false
+  schedule: "0 0 * * *"
+  retention: "7d"
+
+# Node Selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity: {}

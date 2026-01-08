@@ -10,8 +10,12 @@ pub mod vector;
 pub mod brute_force;
 pub mod scalar;
 pub mod manager;
+pub mod hnsw;
+pub mod diskann;
 
 pub use vector::*;
 pub use brute_force::*;
 pub use scalar::*;
 pub use manager::*;
+pub use hnsw::*;
+pub use diskann::*;

@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  cortexdb:
+    build:
+      context: ../../
+      dockerfile: deploy/docker/Dockerfile
+    ports:
+      - "8000:8000"  # REST API
+      - "9000:9000"  # gRPC API
+      - "5432:5432"  # PostgreSQL protocol
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config
+    environment:
+      - RUST_LOG=info
+      - CORTEXDB_DATA_DIR=/app/data
+      - CORTEXDB_CONFIG_DIR=/app/config
+    restart: unless-stopped
+
+  cortexdb-worker:
+    build:
+      context: ../../
+      dockerfile: deploy/docker/Dockerfile
+    command: ["cortex", "worker", "--host", "0.0.0.0", "--port", "8001"]
+    volumes:
+      - ./data:/app/data
+    environment:
+      - RUST_LOG=info
+      - CORTEXDB_DATA_DIR=/app/data
+    restart: unless-stopped
+    depends_on:
+      - cortexdb
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./grafana:/var/lib/grafana
+    restart: unless-stopped
+    depends_on:
+      - prometheus

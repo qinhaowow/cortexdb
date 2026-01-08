@@ -8,6 +8,8 @@ use tokio::sync::RwLock;
 use serde::{Serialize, Deserialize};
 #[cfg(feature = "distributed")]
 use std::time::Duration;
+#[cfg(feature = "distributed")]
+use crate::distributed::raft::{RaftNode, StateMachine, Command, ApplyResult, StateMachineError, Snapshot, Network, RequestVoteRequest, RequestVoteResponse, AppendEntriesRequest, AppendEntriesResponse, InstallSnapshotRequest, InstallSnapshotResponse, NetworkError};
 
 #[cfg(feature = "distributed")]
 #[derive(Debug, Serialize, Deserialize)]
@@ -35,6 +37,7 @@ pub struct ClusterManager {
     nodes: Arc<RwLock<Vec<NodeInfo>>>,
     self_node: NodeInfo,
     leader_id: Arc<RwLock<Option<String>>>,
+    raft_node: Option<Arc<RaftNode>>,
 }
 
 #[cfg(feature = "distributed")]
@@ -54,13 +57,44 @@ impl ClusterManager {
             nodes: Arc::new(RwLock::new(vec![self_node.clone()])),
             self_node,
             leader_id: Arc::new(RwLock::new(None)),
+            raft_node: None,
         }
+    }
+
+    pub async fn initialize_raft(&mut self, nodes: Vec<NodeInfo>) {
+        // Create state machine
+        let state_machine = Box::new(ClusterStateMachine::new());
+        
+        // Create network
+        let network = Box::new(ClusterNetwork::new(self.self_node.id.clone(), nodes.iter().map(|n| n.id.clone()).collect()));
+        
+        // Create Raft node
+        let raft_node = RaftNode::new(&self.self_node.id, state_machine, network);
+        let raft_node = Arc::new(raft_node);
+        
+        // Start Raft node
+        raft_node.start();
+        
+        // Store Raft node
+        self.raft_node = Some(raft_node);
+        
+        // Update nodes
+        let mut nodes_write = self.nodes.write().await;
+        nodes_write.extend(nodes);
     }
 
     pub async fn add_node(&self, node: NodeInfo) -> Result<(), Box<dyn std::error::Error>> {
         let mut nodes = self.nodes.write().await;
         if !nodes.iter().any(|n| n.id == node.id) {
             nodes.push(node);
+            
+            // If we're the leader, propose a config change
+            if let Some(raft_node) = &self.raft_node {
+                let command = Command::ConfigChange {
+                    nodes: nodes.iter().map(|n| n.id.clone()).collect(),
+                };
+                raft_node.propose(command).ok();
+            }
         }
         Ok(())
     }
@@ -68,6 +102,14 @@ impl ClusterManager {
     pub async fn remove_node(&self, node_id: &str) -> Result<(), Box<dyn std::error::Error>> {
         let mut nodes = self.nodes.write().await;
         nodes.retain(|n| n.id != node_id);
+        
+        // If we're the leader, propose a config change
+        if let Some(raft_node) = &self.raft_node {
+            let command = Command::ConfigChange {
+                nodes: nodes.iter().map(|n| n.id.clone()).collect(),
+            };
+            raft_node.propose(command).ok();
+        }
         
         // If the removed node was the leader, elect a new one
         let leader_id = self.leader_id.read().await;
@@ -110,6 +152,7 @@ impl ClusterManager {
     }
 
     pub async fn elect_leader(&self) -> Result<(), Box<dyn std::error::Error>> {
+        // Raft will handle leader election, but we need to update our state
         let nodes = self.nodes.read().await;
         let healthy_nodes: Vec<&NodeInfo> = nodes
             .iter()
@@ -170,6 +213,8 @@ impl ClusterManager {
         for node in nodes.iter_mut() {
             if node.id != self.self_node.id && (now - node.last_heartbeat) > 30 {
                 node.status = NodeStatus::Unhealthy;
+                // Trigger failover if node is unhealthy
+                self.handle_node_failure(&node.id).await?;
             }
         }
         
@@ -178,6 +223,54 @@ impl ClusterManager {
         if let Some(leader_node) = leader {
             if leader_node.status == NodeStatus::Unhealthy {
                 self.elect_leader().await?;
+            }
+        }
+        
+        Ok(())
+    }
+
+    async fn handle_node_failure(&self, node_id: &str) -> Result<(), Box<dyn std::error::Error>> {
+        // Get all shards assigned to this node
+        let sharding_manager = crate::distributed::sharding::ShardingManager::new(
+            Box::new(crate::distributed::sharding::HashShardingStrategy::new(16)),
+            3
+        );
+        
+        // Find healthy nodes to take over shards
+        let healthy_nodes = self.get_healthy_nodes().await;
+        if healthy_nodes.is_empty() {
+            return Err("No healthy nodes available for failover".into());
+        }
+        
+        // Reassign shards from failed node to healthy nodes
+        let shards = sharding_manager.get_shards();
+        for shard in shards {
+            if shard.primary_node == node_id {
+                // Find a healthy node to take over
+                for healthy_node in &healthy_nodes {
+                    if healthy_node.id != node_id {
+                        // Update shard primary node
+                        sharding_manager.update_shard_status(shard.id, crate::distributed::sharding::ShardStatus::Recovering)?;
+                        // TODO: Implement shard transfer logic
+                        sharding_manager.update_shard_status(shard.id, crate::distributed::sharding::ShardStatus::Active)?;
+                        break;
+                    }
+                }
+            }
+            
+            // Update replica nodes if failed node was a replica
+            let mut replica_nodes = shard.replica_nodes;
+            replica_nodes.retain(|id| id != node_id);
+            if replica_nodes.len() < 2 {
+                // Add a new replica from healthy nodes
+                for healthy_node in &healthy_nodes {
+                    if healthy_node.id != node_id && healthy_node.id != shard.primary_node {
+                        replica_nodes.push(healthy_node.id.clone());
+                        if replica_nodes.len() >= 2 {
+                            break;
+                        }
+                    }
+                }
             }
         }
         
@@ -192,6 +285,139 @@ impl Clone for ClusterManager {
             nodes: self.nodes.clone(),
             self_node: self.self_node.clone(),
             leader_id: self.leader_id.clone(),
+            raft_node: self.raft_node.clone(),
         }
+    }
+}
+
+// State machine implementation for cluster management
+#[cfg(feature = "distributed")]
+struct ClusterStateMachine {
+    // Add any necessary state here
+}
+
+#[cfg(feature = "distributed")]
+impl ClusterStateMachine {
+    fn new() -> Self {
+        Self {
+            // Initialize state
+        }
+    }
+}
+
+#[cfg(feature = "distributed")]
+impl StateMachine for ClusterStateMachine {
+    fn apply(&self, command: &Command) -> Result<ApplyResult, StateMachineError> {
+        match command {
+            Command::Put { key, value } => {
+                // Handle put command
+                Ok(ApplyResult::Success(Vec::new()))
+            },
+            Command::Delete { key } => {
+                // Handle delete command
+                Ok(ApplyResult::Success(Vec::new()))
+            },
+            Command::ConfigChange { nodes } => {
+                // Handle config change command
+                Ok(ApplyResult::Success(Vec::new()))
+            },
+            Command::NoOp => {
+                // Handle no-op command
+                Ok(ApplyResult::Success(Vec::new()))
+            },
+        }
+    }
+
+    fn snapshot(&self) -> Result<Snapshot, StateMachineError> {
+        // Create snapshot
+        Ok(Snapshot {
+            data: Vec::new(),
+            last_included_index: 0,
+            last_included_term: 0,
+        })
+    }
+
+    fn restore(&self, snapshot: Snapshot) -> Result<(), StateMachineError> {
+        // Restore from snapshot
+        Ok(())
+    }
+}
+
+// Network implementation for cluster management
+#[cfg(feature = "distributed")]
+struct ClusterNetwork {
+    self_id: String,
+    nodes: Vec<String>,
+}
+
+#[cfg(feature = "distributed")]
+impl ClusterNetwork {
+    fn new(self_id: String, nodes: Vec<String>) -> Self {
+        Self {
+            self_id,
+            nodes,
+        }
+    }
+}
+
+#[cfg(feature = "distributed")]
+impl Network for ClusterNetwork {
+    fn send_request_vote(&self, node_id: &str, request: RequestVoteRequest) -> Result<RequestVoteResponse, NetworkError> {
+        // In a real implementation, this would send the request over the network
+        // For now, we'll just return a mock response
+        Ok(RequestVoteResponse {
+            term: request.term,
+            vote_granted: true,
+            reason: None,
+        })
+    }
+
+    fn send_append_entries(&self, node_id: &str, request: AppendEntriesRequest) -> Result<AppendEntriesResponse, NetworkError> {
+        // In a real implementation, this would send the request over the network
+        // For now, we'll just return a mock response
+        Ok(AppendEntriesResponse {
+            term: request.term,
+            success: true,
+            match_index: request.prev_log_index,
+            next_index: request.prev_log_index + 1,
+        })
+    }
+
+    fn send_install_snapshot(&self, node_id: &str, request: InstallSnapshotRequest) -> Result<InstallSnapshotResponse, NetworkError> {
+        // In a real implementation, this would send the request over the network
+        // For now, we'll just return a mock response
+        Ok(InstallSnapshotResponse {
+            term: request.term,
+            success: true,
+        })
+    }
+
+    fn broadcast_request_vote(&self, request: RequestVoteRequest) -> Vec<Result<RequestVoteResponse, NetworkError>> {
+        // In a real implementation, this would broadcast the request over the network
+        // For now, we'll just return mock responses
+        self.nodes.iter().map(|_| {
+            Ok(RequestVoteResponse {
+                term: request.term,
+                vote_granted: true,
+                reason: None,
+            })
+        }).collect()
+    }
+
+    fn broadcast_append_entries(&self, request: AppendEntriesRequest) -> Vec<Result<AppendEntriesResponse, NetworkError>> {
+        // In a real implementation, this would broadcast the request over the network
+        // For now, we'll just return mock responses
+        self.nodes.iter().map(|_| {
+            Ok(AppendEntriesResponse {
+                term: request.term,
+                success: true,
+                match_index: request.prev_log_index,
+                next_index: request.prev_log_index + 1,
+            })
+        }).collect()
+    }
+
+    fn get_nodes(&self) -> Vec<String> {
+        self.nodes.clone()
     }
 }

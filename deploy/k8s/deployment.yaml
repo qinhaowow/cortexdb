@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cortexdb
+  namespace: default
+  labels:
+    app: cortexdb
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: cortexdb
+  template:
+    metadata:
+      labels:
+        app: cortexdb
+    spec:
+      containers:
+      - name: cortexdb
+        image: cortexdb:latest
+        ports:
+        - containerPort: 8000
+          name: rest
+        - containerPort: 9000
+          name: grpc
+        - containerPort: 5432
+          name: pg
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1"
+          limits:
+            memory: "4Gi"
+            cpu: "2"
+        env:
+        - name: RUST_LOG
+          value: "info"
+        - name: CORTEXDB_DATA_DIR
+          value: "/data"
+        - name: CORTEXDB_CONFIG_DIR
+          value: "/config"
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        - name: config
+          mountPath: /config
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: cortexdb-data
+      - name: config
+        configMap:
+          name: cortexdb-config
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: cortexdb-data
+  namespace: default
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: standard
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cortexdb-config
+  namespace: default
+data:
+  config.toml: |
+    [server]
+    host = "0.0.0.0"
+    port = 8000
+    
+    [storage]
+    data_dir = "/data"
+    
+    [index]
+    type = "hnsw"
+    m = 16
+    ef_construction = 128
+    ef_search = 64

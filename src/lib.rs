@@ -17,6 +17,15 @@ pub mod cortex_monitor;
 pub mod cortex_security;
 pub mod cortex_perf;
 pub mod cortex_utils; 
+pub mod transaction;
+pub mod ai;
+pub mod api;
+pub mod compute;
+pub mod core;
+pub mod distributed;
+pub mod index;
+pub mod query;
+pub mod storage;
 
 // Re-export commonly used types 
 pub use cortex_core::{Vector, Document, CollectionSchema, DistanceMetric, IndexConfig, IndexType, CortexError, Result}; 
@@ -43,15 +52,73 @@ pub struct CortexDB {
 } 
 
 impl CortexDB { 
-    /// Create a new CortexDB instance 
-    pub fn new() -> Self { 
-        todo!() 
+    /// Create a new CortexDB instance with default configuration
+    pub async fn new() -> Result<Self, Box<dyn std::error::Error>> {
+        // Create memory storage as default
+        let mut storage = Box::new(MemoryStorage::new());
+        storage.init().await?;
+        
+        // Create index manager
+        let index_manager = IndexManager::new();
+        
+        Ok(Self {
+            storage,
+            index_manager,
+        })
     } 
     
-    /// Create a new CortexDB instance with configuration 
-    pub fn with_config(config: &str) -> Self { 
-        todo!() 
+    /// Create a new CortexDB instance with configuration
+    pub async fn with_config(config: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        // Parse configuration
+        let config_manager = cortex_core::config::ConfigManager::from_file(config)?;
+        let cortex_config = config_manager.get_config().await;
+        
+        // Create storage based on config
+        let mut storage: Box<dyn StorageEngine> = match cortex_config.storage.engine.as_str() {
+            "memory" => Box::new(MemoryStorage::new()),
+            "persistent" => Box::new(PersistentStorage::new(&cortex_config.storage.directory)),
+            _ => Box::new(MemoryStorage::new()),
+        };
+        storage.init().await?;
+        
+        // Create index manager
+        let index_manager = IndexManager::new();
+        
+        Ok(Self {
+            storage,
+            index_manager,
+        })
     } 
+
+    /// Store a vector with metadata
+    pub async fn store(&self, id: &str, vector: &[f32], metadata: &serde_json::Value) -> Result<(), Box<dyn std::error::Error>> {
+        self.storage.store(id, vector, metadata).await
+    }
+
+    /// Retrieve a vector by ID
+    pub async fn retrieve(&self, id: &str) -> Result<Option<(Vec<f32>, serde_json::Value)>, Box<dyn std::error::Error>> {
+        self.storage.retrieve(id).await
+    }
+
+    /// Delete a vector by ID
+    pub async fn delete(&self, id: &str) -> Result<bool, Box<dyn std::error::Error>> {
+        self.storage.delete(id).await
+    }
+
+    /// List all vectors
+    pub async fn list(&self) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+        self.storage.list().await
+    }
+
+    /// Count the number of vectors
+    pub async fn count(&self) -> Result<usize, Box<dyn std::error::Error>> {
+        self.storage.count().await
+    }
+
+    /// Get the index manager
+    pub fn index_manager(&self) -> &IndexManager {
+        &self.index_manager
+    }
 } 
 
 #[cfg(test)] 

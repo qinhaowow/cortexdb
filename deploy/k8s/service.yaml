@@ -1,0 +1,70 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: cortexdb
+  namespace: default
+  labels:
+    app: cortexdb
+spec:
+  selector:
+    app: cortexdb
+  ports:
+  - name: rest
+    port: 8000
+    targetPort: 8000
+  - name: grpc
+    port: 9000
+    targetPort: 9000
+  - name: pg
+    port: 5432
+    targetPort: 5432
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cortexdb-nodeport
+  namespace: default
+  labels:
+    app: cortexdb
+spec:
+  selector:
+    app: cortexdb
+  ports:
+  - name: rest
+    port: 8000
+    targetPort: 8000
+    nodePort: 30080
+  - name: grpc
+    port: 9000
+    targetPort: 9000
+    nodePort: 30090
+  - name: pg
+    port: 5432
+    targetPort: 5432
+    nodePort: 30543
+  type: NodePort
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cortexdb-loadbalancer
+  namespace: default
+  labels:
+    app: cortexdb
+spec:
+  selector:
+    app: cortexdb
+  ports:
+  - name: rest
+    port: 8000
+    targetPort: 8000
+  - name: grpc
+    port: 9000
+    targetPort: 9000
+  - name: pg
+    port: 5432
+    targetPort: 5432
+  type: LoadBalancer
+  loadBalancerIP: ""
+  externalTrafficPolicy: Cluster

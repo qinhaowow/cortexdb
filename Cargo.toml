@@ -23,8 +23,9 @@ path = "src/main.rs"
 default = []
 python = ["dep:pyo3"]
 grpc = ["dep:tonic", "dep:prost", "dep:tonic-build"]
+websocket = ["dep:tokio-tungstenite", "dep:futures-channel"]
 distributed = ["dep:tokio-stream", "dep:rdkafka"]
-full = ["dep:rocksdb", "compression", "metrics", "grpc", "distributed"]
+full = ["dep:rocksdb", "compression", "metrics", "grpc", "websocket", "distributed"]
 compression = ["dep:flate2", "dep:snap"]
 metrics = ["dep:metrics", "dep:metrics-exporter-prometheus"]
 
@@ -34,6 +35,7 @@ tokio = { version = "1.0", features = ["full"] }
 
 # Web框架
 axum = "0.6"
+warp = "0.3"
 tower = "0.4"
 tower-http = { version = "0.4", features = ["cors", "trace", "compression-full"] }
 
@@ -93,9 +95,18 @@ tonic-build = { version = "0.9", optional = true }
 tokio-stream = { version = "0.1", optional = true }
 rdkafka = { version = "0.34", features = ["tokio", "ssl"], optional = true }
 
+# WebSocket支持
+tokio-tungstenite = { version = "0.19", optional = true }
+futures-channel = { version = "0.3", optional = true }
+
 # 安全模块
 argon2 = "0.5"
 jsonwebtoken = "9.0"
+ring = "0.16"
+
+# 实验特性
+ndarray-rand = "0.15"
+tch = { version = "0.13", optional = true }  # PyTorch绑定，用于联邦学习
 
 [dev-dependencies]
 tempfile = "3.0"

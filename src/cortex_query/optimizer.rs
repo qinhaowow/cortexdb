@@ -46,6 +46,10 @@ pub struct QueryOptimizer {
     strategy: OptimizationStrategy,
     /// Whether to use index statistics
     use_index_stats: bool,
+    /// Whether to use parallel execution
+    use_parallel_execution: bool,
+    /// Whether to use query caching
+    use_query_caching: bool,
 }
 
 impl QueryOptimizer {
@@ -54,6 +58,8 @@ impl QueryOptimizer {
         Self {
             strategy,
             use_index_stats,
+            use_parallel_execution: true,
+            use_query_caching: true,
         }
     }
 
@@ -105,12 +111,30 @@ impl QueryOptimizer {
 
     /// Optimize plan using cost-based strategies
     fn optimize_cost_based(&self, plan: ExecutionPlan) -> Result<ExecutionPlan, CortexError> {
-        // For now, we'll just return the plan as is
         // In a real implementation, we'd:
         // 1. Calculate actual costs based on index statistics
         // 2. Compare different execution strategies
         // 3. Choose the lowest cost plan
-        Ok(plan)
+        
+        // For now, we'll apply some basic cost-based optimizations
+        let optimized_root = self.optimize_plan_step(plan.root)?;
+        
+        // Check if we can parallelize any operations
+        let parallel_optimized_root = if self.use_parallel_execution {
+            self.optimize_parallel_execution(optimized_root)?
+        } else {
+            optimized_root
+        };
+
+        let optimized_plan = ExecutionPlan {
+            root: parallel_optimized_root,
+            total_cost: self.calculate_total_cost(&parallel_optimized_root),
+            total_rows: self.calculate_total_rows(&parallel_optimized_root),
+            generation_time_ms: plan.generation_time_ms,
+            uses_index: self.plan_uses_index(&parallel_optimized_root),
+        };
+
+        Ok(optimized_plan)
     }
 
     /// Optimize plan using rule-based strategies
@@ -159,6 +183,8 @@ impl QueryOptimizer {
         // In a real implementation, we'd:
         // 1. Check if there's an index that could be used
         // 2. Rewrite the plan to use the index if it's beneficial
+        
+        // For now, we'll just return the step as is
         Ok(step)
     }
 
@@ -168,6 +194,8 @@ impl QueryOptimizer {
         // 1. Check if the index is the best one for the query
         // 2. Consider covering indexes
         // 3. Optimize index access patterns
+        
+        // For now, we'll just return the step as is
         Ok(step)
     }
 
@@ -177,6 +205,8 @@ impl QueryOptimizer {
         // 1. Optimize vector search parameters (ef_search, etc.)
         // 2. Consider using scalar filters to reduce the search space
         // 3. Optimize batch sizes and parallelism
+        
+        // For now, we'll just return the step as is
         Ok(step)
     }
 
@@ -196,6 +226,17 @@ impl QueryOptimizer {
         };
 
         Ok(optimized_step)
+    }
+
+    /// Optimize for parallel execution
+    fn optimize_parallel_execution(&self, step: PlanStep) -> Result<PlanStep, CortexError> {
+        // In a real implementation, we'd:
+        // 1. Identify parts of the plan that can be executed in parallel
+        // 2. Rewrite the plan to use parallel execution
+        // 3. Set appropriate parallelism levels based on system resources
+        
+        // For now, we'll just return the step as is
+        Ok(step)
     }
 
     /// Calculate total cost of a plan step
@@ -235,6 +276,16 @@ impl QueryOptimizer {
     /// Enable/disable index statistics usage
     pub fn set_use_index_stats(&mut self, use_index_stats: bool) {
         self.use_index_stats = use_index_stats;
+    }
+
+    /// Enable/disable parallel execution
+    pub fn set_use_parallel_execution(&mut self, use_parallel_execution: bool) {
+        self.use_parallel_execution = use_parallel_execution;
+    }
+
+    /// Enable/disable query caching
+    pub fn set_use_query_caching(&mut self, use_query_caching: bool) {
+        self.use_query_caching = use_query_caching;
     }
 }
 
