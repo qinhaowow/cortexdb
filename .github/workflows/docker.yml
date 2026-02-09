@@ -3,45 +3,246 @@ name: Docker Build
 on:
   push:
     branches: [ main, develop ]
+    paths:
+      - 'Dockerfile'
+      - 'docker/**'
+      - '.github/workflows/docker.yml'
+      - 'src/**'
+      - 'Cargo.toml'
   pull_request:
     branches: [ main, develop ]
+    paths:
+      - 'Dockerfile'
+      - 'docker/**'
+      - '.github/workflows/docker.yml'
   release:
     types: [ published ]
 
+env:
+  DOCKER_BUILDKIT: 1
+  DOCKER_IMAGE: cortexdb
+  REGISTRY: ghcr.io
+
 jobs:
   build:
-    runs-on: ubuntu-latest
+    name: Build & Test (${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        arch: [amd64, arm64]
+        include:
+          - os: ubuntu-latest
+            platform: linux/amd64
+          - os: ubuntu-latest
+            platform: linux/arm64/v8
     steps:
-    - uses: actions/checkout@v4
-    - name: Build Docker image
-      run: |
-        docker build -t cortexdb:latest .
-    - name: Test Docker image
-      run: |
-        docker run --rm cortexdb:latest --version
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: ${{ matrix.platform }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ env.REGISTRY }}/${{ github.repository }}/${{ env.DOCKER_IMAGE }}
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix=
+            type=ref,event=branch
+            type=ref,event=tag
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          push: false
+          load: true
+          tags: ${{ env.DOCKER_IMAGE }}:${{ matrix.arch }}
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
+          build-args: |
+            RUST_BUILD_TARGET=${{ matrix.arch }}
+
+      - name: Test Docker image
+        run: |
+          docker run --rm ${{ env.DOCKER_IMAGE }}:${{ matrix.arch }} --version
+          docker run --rm ${{ env.DOCKER_IMAGE }}:${{ matrix.arch }} --help
+
+  scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Trivy Vulnerability Scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: '${{ env.DOCKER_IMAGE }}:amd64'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Run Grype Vulnerability Scanner
+        uses: anchore/scan-action@v3
+        with:
+          image: ${{ env.DOCKER_IMAGE }}:amd64
+          fail-build: true
+          severity-cutoff: high
 
   push:
-    needs: build
+    name: Push to Registry
     runs-on: ubuntu-latest
+    needs: [build, scan]
     if: github.event_name == 'release' && github.event.action == 'published'
-    
     steps:
-    - uses: actions/checkout@v4
-    - name: Login to DockerHub
-      uses: docker/login-action@v3
-      with:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
-    - name: Build and push Docker image
-      run: |
-        RELEASE_VERSION=$(echo "${{ github.ref }}" | sed -e 's,.*/\(.*\),\1,')
-        # Strip 'v' prefix from tag
-        RELEASE_VERSION=$(echo $RELEASE_VERSION | sed -e 's/^v//')
-        
-        # Build and push version tag
-        docker build -t cortexdb:$RELEASE_VERSION .
-        docker push cortexdb:$RELEASE_VERSION
-        
-        # Build and push latest tag
-        docker build -t cortexdb:latest .
-        docker push cortexdb:latest
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Login to DockerHub
+        if: secrets.DOCKERHUB_TOKEN != ''
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract metadata for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ${{ env.REGISTRY }}/${{ github.repository }}/${{ env.DOCKER_IMAGE }}
+            ${{ env.DOCKER_IMAGE }}
+          tags: |
+            type=raw,value=latest
+            type=sha
+            type=ref,event=tag
+            type=ref,event=tag,prefix=
+
+      - name: Build and push multi-arch Docker images
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64/v8
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            RUST_BUILD_TARGET=multi
+
+  manifest:
+    name: Create Manifest
+    runs-on: ubuntu-latest
+    needs: push
+    if: github.event_name == 'release' && github.event.action == 'published'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login to DockerHub
+        if: secrets.DOCKERHUB_TOKEN != ''
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull images
+        run: |
+          docker pull ${{ env.DOCKER_IMAGE }}:amd64 || true
+          docker pull ${{ env.DOCKER_IMAGE }}:arm64 || true
+
+      - name: Create and push manifest
+        run: |
+          VERSION=${{ github.event.release.tag_name }}
+          docker manifest create ${{ env.DOCKER_IMAGE }}:$VERSION ${{ env.DOCKER_IMAGE }}:amd64 ${{ env.DOCKER_IMAGE }}:arm64
+          docker manifest annotate ${{ env.DOCKER_IMAGE }}:$VERSION ${{ env.DOCKER_IMAGE }}:amd64 --os linux --arch amd64
+          docker manifest annotate ${{ env.DOCKER_IMAGE }}:$VERSION ${{ env.DOCKER_IMAGE }}:arm64 --os linux --arch arm64/v8
+          docker manifest push ${{ env.DOCKER_IMAGE }}:$VERSION
+          
+          docker manifest create ${{ env.DOCKER_IMAGE }}:latest ${{ env.DOCKER_IMAGE }}:amd64 ${{ env.DOCKER_IMAGE }}:arm64
+          docker manifest push ${{ env.DOCKER_IMAGE }}:latest
+
+  deploy_staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: push
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    environment:
+      name: staging
+      url: https://staging.cortexdb.io
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy to Kubernetes Staging
+        uses: azure/k8s-set-context@v4
+        with:
+          kubeconfig: ${{ secrets.KUBECONFIG_STAGING }}
+
+      - name: Deploy to staging cluster
+        run: |
+          kubectl config set-context --current --namespace=cortexdb-staging
+          kubectl apply -f deploy/k8s/
+          kubectl rollout status deployment/cortexdb
+
+  deploy_production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: manifest
+    if: github.event_name == 'release' && github.event.action == 'published'
+    environment:
+      name: production
+      url: https://cortexdb.io
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy to Kubernetes Production
+        uses: azure/k8s-set-context@v4
+        with:
+          kubeconfig: ${{ secrets.KUBECONFIG_PRODUCTION }}
+
+      - name: Deploy to production cluster
+        run: |
+          kubectl config set-context --current --namespace=cortexdb-production
+          kubectl apply -f deploy/k8s/
+          kubectl rollout status deployment/cortexdb --timeout=600s

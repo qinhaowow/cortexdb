@@ -61,3 +61,11 @@ coverage/
 # Temporary 
 tmp/ 
 temp/
+
+# 缺失的重要依赖：
+async-trait = "0.1"  # 用于异步 trait
+raft = "0.10"        # Raft 分布式共识算法
+rusoto-s3 = "0.48"   # AWS S3 对象存储
+reqwest = "0.11"      # HTTP 客户端
+tokio-postgres = "0.7" # PostgreSQL 协议支持
+tantivy = "0.21"      # 全文搜索

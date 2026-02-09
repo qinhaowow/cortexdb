@@ -1,0 +1,204 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'src/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/Ci.yaml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/Ci.yaml'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  lint_and_check:
+    name: Lint & Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      
+      - name: Cache Cargo dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+      
+      - name: Check Format
+        run: cargo fmt --all -- --check
+      
+      - name: Clippy Lint
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      
+      - name: Check Dead Code
+        run: cargo deadlinks --dir target/doc --no-port
+        
+  build_and_test:
+    name: Build & Test (${{ matrix.target }})
+    runs-on: ${{ matrix.target }}
+    needs: lint_and_check
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target == 'windows-latest' && 'x86_64-pc-windows-msvc' || 'x86_64-unknown-linux-gnu' }}
+      
+      - name: Cache Cargo dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-${{ matrix.target }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+      
+      - name: Build All Crates
+        run: cargo build --workspace --verbose
+      
+      - name: Run Unit Tests
+        run: cargo test --workspace --lib --bins --tests --verbose
+      
+      - name: Run Doc Tests
+        run: cargo test --workspace --doc --verbose
+
+  test_new_modules:
+    name: Test New Modules
+    runs-on: ubuntu-latest
+    needs: build_and_test
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: dtolnay/rust-toolchain@stable
+      
+      - name: Cache Cargo dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      
+      - name: Test Scheduler Module
+        run: cargo test --package cortexdb --lib -- scheduler:: --nocapture
+      
+      - name: Test Worker Module
+        run: cargo test --package cortexdb --lib -- worker:: --nocapture
+      
+      - name: Test Clustering Module
+        run: cargo test --package cortexdb --lib -- clustering:: --nocapture
+      
+      - name: Test Sharding Module
+        run: cargo test --package cortexdb --lib -- sharding:: --nocapture
+      
+      - name: Test Discovery Module
+        run: cargo test --package cortexdb --lib -- discovery:: --nocapture
+      
+      - name: Test Coordinator Module
+        run: cargo test --package cortexdb --lib -- coordinator:: --nocapture
+
+  integration_test:
+    name: Integration Test
+    runs-on: ubuntu-latest
+    needs: build_and_test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: dtolnay/rust-toolchain@stable
+      
+      - name: Run Integration Tests
+        run: cargo test --test '*' --verbose
+      
+      - name: Run Distributed Tests
+        if: contains(github.event.head_commit.message, '[distributed]')
+        run: |
+          cargo test --test distributed --verbose
+          cargo test --test chaos --verbose
+
+  benchmark:
+    name: Benchmarks
+    runs-on: ubuntu-latest
+    needs: build_and_test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: dtolnay/rust-toolchain@stable
+      
+      - name: Run Benchmarks
+        run: cargo bench -- --output-format=json > benchmark.json
+      
+      - name: Upload Benchmark Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmarks
+          path: benchmark.json
+      
+      - name: Compare with Main Branch
+        if: github.event_name == 'pull_request'
+        uses: benchmark-action/github-action@v1
+        with:
+          name: Rust Benchmark
+          instrument-command: cargo bench
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          alert-threshold: 200%
+          fail-alert-on-regression: true
+
+  coverage:
+    name: Code Coverage
+    runs-on: ubuntu-latest
+    needs: build_and_test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      
+      - name: Install cargo-tarpaulin
+        run: cargo install cargo-tarpaulin
+      
+      - name: Generate Coverage Report
+        run: |
+          cargo tarpaulin --workspace --out Xml --verbose
+          cargo tarpaulin --workspace --out Html --verbose
+      
+      - name: Upload Coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./target/tarpaulin/tarpaulin-report.xml
+          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+      
+      - name: Upload Coverage Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: target/tarpaulin/

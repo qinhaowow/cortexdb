@@ -3,57 +3,346 @@ name: Python Package
 on:
   push:
     branches: [ main, develop ]
+    paths:
+      - 'python/**'
+      - '.github/workflows/python.yml'
   pull_request:
     branches: [ main, develop ]
+    paths:
+      - 'python/**'
+      - '.github/workflows/python.yml'
   release:
     types: [ published ]
 
 jobs:
-  build:
+  lint:
+    name: Lint & Type Check
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install linting tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install black isort flake8 mypy pyright
+
+      - name: Check formatting with Black
+        run: black --check python/cortexdb/
+
+      - name: Check imports with isort
+        run: isort --check-only python/cortexdb/
+
+      - name: Lint with flake8
+        run: flake8 python/cortexdb/ --max-line-length=100 --ignore=E501,W503
+
+      - name: Type check with mypy
+        run: mypy python/cortexdb/ --ignore-missing-imports
+
+      - name: Type check with pyright
+        uses: jakebailey/pyright-action@v1
+        with:
+          python-path: python
+
+  test:
+    name: Test (${{ matrix.python-version }} / ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.8', '3.9', '3.10', '3.11', '3.12']
+        exclude:
+          - os: windows-latest
+            python-version: '3.12'
+          - os: macos-latest
+            python-version: '3.12'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip wheel setuptools
+          pip install build pytest pytest-cov pytest-asyncio
+          if [ -f python/requirements.txt ]; then pip install -r python/requirements.txt; fi
+          if [ -f python/requirements-dev.txt ]; then pip install -r python/requirements-dev.txt; fi
+
+      - name: Build package
+        run: |
+          cd python && python -m build
+
+      - name: Install package
+        run: |
+          pip install dist/cortexdb-*.whl
+
+      - name: Run unit tests
+        run: |
+          pytest python/tests/ -v --cov=cortexdb --cov-report=xml --cov-report=term-missing
+
+      - name: Upload coverage to Codecov
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.11'
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+
+  test_integration:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-asyncio httpx requests
+
+      - name: Set up CortexDB Rust backend
+        uses: actions/checkout@v4
+        with:
+          repository: yourusername/cortexdb-rust
+          path: rust-backend
+          token: ${{ secrets.GH_TOKEN }}
+
+      - name: Build Rust backend
+        run: |
+          cd rust-backend
+          cargo build --release
+
+      - name: Run integration tests
+        run: |
+          pytest python/tests/integration/ -v
+
+  test_client:
+    name: Test Client Features
+    runs-on: ubuntu-latest
+    needs: lint
     strategy:
       matrix:
-        python-version: [ '3.8', '3.9', '3.10', '3.11', '3.12' ]
-
+        test-type:
+          - vector-search
+          - metadata-filtering
+          - collections
+          - graphql
+        include:
+          - test-type: vector-search
+            markers: vector
+          - test-type: metadata-filtering
+            markers: metadata
+          - test-type: collections
+            markers: collection
+          - test-type: graphql
+            markers: graphql
     steps:
-    - uses: actions/checkout@v4
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
-      with:
-        python-version: ${{ matrix.python-version }}
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install build pytest
-        if [ -f python/requirements.txt ]; then pip install -r python/requirements.txt; fi
-    - name: Build package
-      run: |
-        cd python && python -m build
-    - name: Test package
-      run: |
-        cd python && python -m pytest tests/ -v
+      - uses: actions/checkout@v4
 
-  publish:
-    needs: build
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-asyncio
+
+      - name: Build and install package
+        run: |
+          cd python && pip install -e .
+
+      - name: Run client tests
+        run: |
+          pytest python/tests/ -v -k "${{ matrix.markers }}"
+
+  benchmark:
+    name: Python Benchmarks
     runs-on: ubuntu-latest
-    if: github.event_name == 'release' && github.event.action == 'published'
-    
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
-    - uses: actions/checkout@v4
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.10'
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install build twine
-    - name: Build package
-      run: |
-        cd python && python -m build
-    - name: Publish to PyPI
-      env:
-        TWINE_USERNAME: ${{ secrets.PYPI_USERNAME }}
-        TWINE_PASSWORD: ${{ secrets.PYPI_PASSWORD }}
-      run: |
-        cd python && twine upload dist/*
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest-benchmark pytest
+
+      - name: Build and install package
+        run: |
+          cd python && pip install -e .
+
+      - name: Run benchmarks
+        run: |
+          pytest python/tests/ -v --benchmark-disable
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-benchmarks
+          path: benchmark.json
+
+  security_scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install safety
+        run: pip install safety
+
+      - name: Check for vulnerabilities with safety
+        run: |
+          safety check -r python/requirements.txt || true
+          safety check -r python/requirements-dev.txt || true
+
+      - name: Install Bandit
+        run: pip install bandit
+
+      - name: Run Bandit security check
+        run: bandit -r python/cortexdb/ -f sarif -o bandit-results.sarif
+
+      - name: Upload Bandit results
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: bandit-results.sarif
+
+      - name: Install pip-audit
+        run: pip install pip-audit
+
+      - name: Run pip-audit
+        run: |
+          pip-audit -r python/requirements.txt -r python/requirements-dev.txt || true
+
+  build:
+    name: Build Package
+    runs-on: ubuntu-latest
+    needs: [test, security_scan]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip wheel setuptools
+          pip install build twine
+
+      - name: Build package
+        run: |
+          cd python && python -m build
+
+      - name: Check package
+        run: |
+          pip install dist/cortexdb-*.whl
+          cortexdb --version
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-package
+          path: python/dist/
+
+  publish_test_pypi:
+    name: Publish to TestPyPI
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download package artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package
+          path: python/dist/
+
+      - name: Publish to TestPyPI
+        if: github.event_name == 'push'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          user: __token__
+          password: ${{ secrets.TEST_PYPI_API_TOKEN }}
+          repository_url: https://test.pypi.org/legacy/
+          skip_existing: true
+
+  publish_pypi:
+    name: Publish to PyPI
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'release' && github.event.action == 'published'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download package artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package
+          path: python/dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          user: __token__
+          password: ${{ secrets.PYPI_API_TOKEN }}
+
+  release_notes:
+    name: Generate Release Notes
+    runs-on: ubuntu-latest
+    needs: publish_pypi
+    if: github.event_name == 'release' && github.event.action == 'published'
+    steps:
+      - name: Generate changelog
+        run: |
+          git log $(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || echo "")..HEAD --oneline --pretty=format:"%h %s" > CHANGELOG.txt
+          cat CHANGELOG.txt
+
+      - name: Create release PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: context.ref,
+              name: context.payload.release.name,
+              body: context.payload.release.body,
+              draft: false,
+              prerelease: false
+            })

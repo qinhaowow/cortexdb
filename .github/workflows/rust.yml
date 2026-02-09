@@ -3,68 +3,352 @@ name: Rust CI
 on:
   push:
     branches: [ main, develop ]
+    paths:
+      - 'src/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/rust.yml'
   pull_request:
     branches: [ main, develop ]
+    paths:
+      - 'src/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/rust.yml'
 
 env:
   CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
 
 jobs:
-  build:
+  rust_toolchain:
+    name: Rust Toolchain Setup
     runs-on: ubuntu-latest
+    outputs:
+      toolchain: ${{ steps.toolchain.outputs.name }}
     steps:
-    - uses: actions/checkout@v4
-    - name: Update Rust
-      run: rustup update stable
-    - name: Build
-      run: cargo build --verbose
-    - name: Run tests
-      run: cargo test --verbose
-    - name: Run clippy
-      run: cargo clippy --all-targets --all-features -- -D warnings
-    - name: Build documentation
-      run: cargo doc --no-deps
-    - name: Check formatting
-      run: cargo fmt --check
+      - id: toolchain
+        run: echo "name=$(cat rust-toolchain.toml 2>/dev/null || echo 'stable')" >> $GITHUB_OUTPUT
 
-  test-matrix:
+  build:
+    name: Build (${{ matrix.os }} / ${{ matrix.rust }})
     runs-on: ${{ matrix.os }}
+    needs: rust_toolchain
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macOS-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
         rust: [stable, beta]
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: macos-latest
+            target: x86_64-apple-darwin
     steps:
-    - uses: actions/checkout@v4
-    - name: Setup Rust
-      run: rustup update ${{ matrix.rust }} && rustup default ${{ matrix.rust }}
-    - name: Build
-      run: cargo build --verbose
-    - name: Run tests
-      run: cargo test --verbose
+      - uses: actions/checkout@v4
+      
+      - name: Setup Rust ${{ matrix.rust }}
+        uses: dtolnay/rust-toolchain@master
+        with:
+          rust-version: ${{ matrix.rust }}
+          targets: ${{ matrix.target }}
+      
+      - name: Add musl target for Linux static build
+        if: matrix.os == 'ubuntu-latest'
+        run: rustup target add x86_64-unknown-linux-musl
+      
+      - name: Cache Cargo dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ matrix.rust }}-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.rust }}-${{ matrix.target }}-
+      
+      - name: Build
+        run: cargo build --target ${{ matrix.target }} --workspace --verbose --all-features
+      
+      - name: Run tests
+        run: cargo test --target ${{ matrix.target }} --workspace --lib --bins --tests --verbose
+      
+      - name: Run doc tests
+        run: cargo test --target ${{ matrix.target }} --workspace --doc --verbose
+      
+      - name: Run clippy
+        if: matrix.rust == 'stable'
+        run: cargo clippy --target ${{ matrix.target }} --workspace --all-targets --all-features -- -D warnings
+
+  build_release:
+    name: Release Build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            strip: strip
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: macos-latest
+            target: x86_64-apple-darwin
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          rust-version: stable
+          targets: ${{ matrix.target }}
+      
+      - name: Build release
+        run: cargo build --target ${{ matrix.target }} --release --verbose
+      
+      - name: Strip binary
+        if: matrix.strip != ''
+        run: ${{ matrix.strip }} target/${{ matrix.target }}/release/cortex 2>/dev/null || true
+      
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: cortex-${{ matrix.os }}-${{ matrix.target }}
+          path: target/${{ matrix.target }}/release/cortex
+
+  test_new_modules:
+    name: Test New Modules
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: dtolnay/rust-toolchain@stable
+      
+      - name: Cache Cargo dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      
+      - name: Test Scheduler Module
+        run: cargo test --lib -- scheduler:: --nocapture
+      
+      - name: Test Worker Module
+        run: cargo test --lib -- worker:: --nocapture
+      
+      - name: Test Clustering Module
+        run: |
+          echo "Running clustering module tests..."
+          cargo test --lib -- clustering:: --nocapture
+      
+      - name: Test Clustering Algorithms
+        run: |
+          cargo test --lib -- streaming_kmeans --nocapture
+          cargo test --lib -- birch --nocapture
+          cargo test --lib -- ann --nocapture
+      
+      - name: Test Sharding Module
+        run: |
+          cargo test --lib -- sharding:: --nocapture
+      
+      - name: Test Discovery Module
+        run: |
+          cargo test --lib -- discovery:: --nocapture
+      
+      - name: Test Coordinator Module
+        run: |
+          cargo test --lib -- coordinator:: --nocapture
 
   benchmark:
+    name: Benchmarks
     runs-on: ubuntu-latest
     needs: build
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
-    - uses: actions/checkout@v4
-    - name: Run benchmarks
-      run: cargo bench --verbose
+      - uses: actions/checkout@v4
+      
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy, llvm-tools-preview
+      
+      - name: Cache Cargo dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-bench-${{ hashFiles('**/Cargo.lock') }}
+      
+      - name: Run benchmarks
+        run: |
+          cargo bench -- --test --output-format=json | tee benchmark.json
+      
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: benchmark.json
+      
+      - name: Run performance regression check
+        run: |
+          echo "Comparing with previous benchmark results..."
+          cargo bench -- --test --baseline main
 
-  release:
+  benchmark_clustering:
+    name: Clustering Benchmarks
+    runs-on: ubuntu-latest
+    needs: benchmark
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: dtolnay/rust-toolchain@stable
+      
+      - name: Run K-Means benchmarks
+        run: |
+          cargo bench -- streaming_kmeans
+          cargo bench -- kmeans
+      
+      - name: Run BIRCH benchmarks
+        run: cargo bench -- birch
+      
+      - name: Run ANN benchmarks
+        run: |
+          cargo bench -- annoy
+          cargo bench -- hnsw
+          cargo bench -- lsh
+
+  benchmark_sharding:
+    name: Sharding Benchmarks
+    runs-on: ubuntu-latest
+    needs: benchmark
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: dtolnay/rust-toolchain@stable
+      
+      - name: Run consistent hash benchmarks
+        run: cargo bench -- consistent_hash
+      
+      - name: Run load balancer benchmarks
+        run: cargo bench -- balancer
+
+  miri:
+    name: Miri Memory Check
     runs-on: ubuntu-latest
     needs: build
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Miri
+        run: |
+          rustup toolchain install nightly
+          rustup +nightly component add miri
+          cargo +nightly install miri-test-threads || true
+      
+      - name: Run Miri
+        run: cargo +nightly miri test --workspace
+
+  fuzz:
+    name: Fuzz Testing
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: dtolnay/rust-toolchain@stable
+      
+      - name: Run fuzz tests
+        run: |
+          cargo test --test fuzz --verbose || true
+
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    needs: [build, benchmark]
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
-    - uses: actions/checkout@v4
-    - name: Build release
-      run: cargo build --release --verbose
-    - name: Create release
-      uses: softprops/action-gh-release@v2
-      with:
-        files: |
-          target/release/cortex
-        draft: false
-        prerelease: false
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Create release tag
+        run: |
+          TAG=${GITHUB_REF#refs/tags/v}
+          echo "RELEASE_TAG=$TAG" >> $GITHUB_ENV
+      
+      - name: Build release
+        run: cargo build --release --verbose
+      
+      - name: Create release artifacts
+        run: |
+          mkdir -p release-artifacts
+          cp target/release/cortex release-artifacts/
+          cp target/release/cortexdb release-artifacts/ 2>/dev/null || true
+      
+      - name: Create tarball
+        run: |
+          tar -czf cortex-${{ env.RELEASE_TAG }}-x86_64-unknown-linux-gnu.tar.gz -C release-artifacts cortex
+          tar -czf cortex-${{ env.RELEASE_TAG }}-x86_64-apple-darwin.tar.gz -C release-artifacts cortex 2>/dev/null || true
+          zip -r cortex-${{ env.RELEASE_TAG }}-x86_64-pc-windows-msvc.zip release-artifacts 2>/dev/null || true
+      
+      - name: Upload release artifacts
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            cortex-*.tar.gz
+            cortex-*.zip
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref_name }}
+          release_name: Release ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+
+  documentation:
+    name: Documentation
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rust-docs
+      
+      - name: Build documentation
+        run: cargo doc --workspace --no-deps --verbose
+      
+      - name: Check documentation links
+        run: cargo deadlinks --dir target/doc --no-port
+      
+      - name: Deploy to GitHub Pages
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./target/doc

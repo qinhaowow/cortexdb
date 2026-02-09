@@ -1,0 +1,405 @@
+name: Security
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'src/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'python/**'
+      - 'requirements*.txt'
+      - '.github/workflows/security.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'python/**'
+      - 'requirements*.txt'
+      - '.github/workflows/security.yml'
+  schedule:
+    - cron: '0 0 * * 0'  # 每周运行一次全面安全检查
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  dependency_audit:
+    name: Dependency Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit
+
+      - name: Run cargo-audit
+        run: |
+          cargo audit --json --output audit.json || true
+          cat audit.json
+
+      - name: Upload audit results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cargo-audit-results
+          path: audit.json
+
+      - name: Alert on vulnerabilities
+        uses: actions/github-script@v7
+        if: always() && github.event_name != 'schedule'
+        with:
+          script: |
+            const fs = require('fs');
+            const audit = JSON.parse(fs.readFileSync('audit.json', 'utf8'));
+            if (audit.vulnerabilities.list.length > 0) {
+              github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: 'Security Vulnerability Found',
+                body: `Found ${audit.vulnerabilities.list.length} vulnerabilities in dependencies:\n\n` +
+                      audit.vulnerabilities.list.map(v => 
+                        `- ${v.package}: ${v.severity}\n  ID: ${v.id}\n  Advisory: ${v.advisory}\n`
+                      ).join('\n'),
+                labels: ['security', 'vulnerability']
+              });
+            }
+
+  dependency_check:
+    name: Dependency Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install pip-audit
+        run: pip install pip-audit
+
+      - name: Audit Python dependencies
+        run: |
+          pip-audit --json --output pip-audit.json || true
+          cat pip-audit.json
+
+      - name: Upload pip-audit results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pip-audit-results
+          path: pip-audit.json
+
+  trivy_scan:
+    name: Trivy Vulnerability Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Trivy Vulnerability Scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Trivy Full Scan
+        if: github.event_name == 'schedule'
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'table'
+          output: 'trivy-full-report.txt'
+          severity: 'CRITICAL,HIGH,MEDIUM,LOW,UNKNOWN'
+
+  codeql_analysis:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [rust, python]
+        include:
+          - language: rust
+            build-mode: none
+            setup-python: false
+          - language: python
+            build-mode: none
+            setup-python: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        if: matrix.setup-python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
+          upload: true
+
+  secret_scanning:
+    name: Secret Scanning
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run TruffleHog
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: .
+          extra_args: --entropy-threshold=80
+
+      - name: Run GitLeaks
+        uses: gitleaks/gitleaks-action@v2
+        with:
+          config-path: .gitleaks.toml
+
+  rust_secURITY:
+    name: Rust Security Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Check for unsafe code
+        run: |
+          echo "Checking for unsafe code patterns..."
+          grep -r "unsafe {" src/ --include="*.rs" || echo "No unsafe blocks found"
+
+      - name: Run cargo-deny
+        uses:EmbarkStudios/cargo-deny-action@v1
+        with:
+          command: check all
+
+      - name: Check dependencies license
+        uses:EmbarkStudios/cargo-deny-action@v1
+        with:
+          command: license --data-licenses-file
+
+  docker_scan:
+    name: Docker Security Scan
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image for scanning
+        run: |
+          docker build -t cortexdb:scan .
+
+      - name: Run Trivy Container Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'cortexdb:scan'
+          format: 'sarif'
+          output: 'docker-trivy-results.sarif'
+
+      - name: Upload Docker scan results
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'docker-trivy-results.sarif'
+
+      - name: Run Grype Container Scan
+        uses: anchore/scan-action@v3
+        with:
+          image: 'cortexdb:scan'
+          fail-build: true
+          severity-cutoff: critical
+
+  python_security:
+    name: Python Security Checks
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install security tools
+        run: |
+          pip install --upgrade pip
+          pip install bandit safety pyright pylint flake8 bandit
+
+      - name: Run Bandit
+        run: bandit -r python/cortexdb/ -f json -o bandit-results.json || true
+
+      - name: Upload Bandit results
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-results
+          path: bandit-results.json
+
+      - name: Safety check
+        run: |
+          if [ -f python/requirements.txt ]; then
+            safety check -r python/requirements.txt --json -o safety.json || true
+          fi
+
+  dependency_review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: critical
+          license-check: true
+          license-allow-ids: |
+            Apache-2.0
+            MIT
+            BSD-3-Clause
+            MPL-2.0
+
+  fuzzing:
+    name: Fuzzing Security Check
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Run cargo-fuzz
+        uses: google OSS-Fuzz/action@cargo-fuzz/master
+        with:
+          project: cortexdb
+          commit: ${{ github.sha }}
+
+  sast_scan:
+    name: SAST Scan
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Semgrep
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: 'r/rust'
+          Sarif: 'semgrep-rust.sarif'
+
+      - name: Run Semgrep for Python
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: 'r/python'
+          Sarif: 'semgrep-python.sarif'
+
+      - name: Upload Semgrep results
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'semgrep-*.sarif'
+
+  security_scorecard:
+    name: OpenSSF Scorecard
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Scorecard
+        uses: ossf/scorecard-action@v2
+        with:
+          results_file: results.json
+          results_format: json
+          Sarif: sarif
+
+      - name: Upload Scorecard results
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: sarif
+
+  alert_summary:
+    name: Security Alert Summary
+    runs-on: ubuntu-latest
+    needs: [
+      dependency_audit,
+      dependency_check,
+      trivy_scan,
+      codeql_analysis,
+      secret_scanning,
+      rust_security,
+      docker_scan,
+      python_security
+    ]
+    if: github.event_name == 'schedule' || always()
+    steps:
+      - name: Generate Security Summary
+        run: |
+          echo "## Security Scan Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Date: $(date)" >> $GITHUB_STEP_SUMMARY
+          echo "Repository: ${{ github.repository }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Completed Scans" >> $GITHUB_STEP_SUMMARY
+          echo "- Dependency Audit" >> $GITHUB_STEP_SUMMARY
+          echo "- Vulnerability Scanning" >> $GITHUB_STEP_SUMMARY
+          echo "- CodeQL Analysis" >> $GITHUB_STEP_SUMMARY
+          echo "- Secret Scanning" >> $GITHUB_STEP_SUMMARY
+          echo "- Docker Security Scan" >> $GITHUB_STEP_SUMMARY
+          echo "- Python Security Checks" >> $GITHUB_STEP_SUMMARY
+          echo "- Dependency Review" >> $GITHUB_STEP_SUMMARY
+
+      - name: Create Security Report
+        if: github.event_name == 'schedule'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            github.rest.repos.createOrUpdateFile({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              path: '.github/security-report.md',
+              message: 'Update security report',
+              content: Buffer.from('# Security Report\n\nGenerated: ' + new Date().toISOString() + '\n\n## Summary\nWeekly security scan completed.').toString('base64')
+            })

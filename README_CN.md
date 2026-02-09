@@ -10,7 +10,7 @@
 
 **CortexDB** 是一个企业级分布式向量数据库，专为 AI 应用设计，支持多模态数据存储与检索。
 
-[English](README.md) | [中文](README_CN.md)
+[English](README.md) | 中文
 
 </div>
 
@@ -87,25 +87,25 @@ results = db.search([0.1, 0.2, 0.3, 0.4], k=10)
 ```
 CortexDB/
 ├── src/
-│   ├── cortex_core/      # 核心类型、配置、模式
-│   ├── cortex_storage/    # 存储引擎
-│   ├── cortex_index/      # 索引管理
-│   ├── cortex_query/      # 查询处理
-│   ├── cortex_api/        # REST/gRPC API
+│   ├── cortex_core/        # 核心类型、配置、模式
+│   ├── cortex_storage/     # 存储引擎
+│   ├── cortex_index/       # 索引管理
+│   ├── cortex_query/       # 查询处理
+│   ├── cortex_api/         # REST/gRPC API
 │   ├── cortex_distributed/ # 分布式协调
-│   ├── cortex_security/   # 安全认证
-│   ├── cortex_monitor/    # 监控日志
-│   ├── cortex_backup/     # 备份恢复
-│   ├── scheduler/         # 任务调度
-│   ├── worker/           # 工作节点
-│   ├── clustering/       # 聚类算法
-│   ├── sharding/         # 数据分片
-│   ├── discovery/        # 服务发现
-│   └── coordinator/      # 领导选举
-├── python/               # Python SDK
-├── deploy/              # 部署配置
-├── .github/workflows/    # CI/CD 流水线
-└── tests/               # 测试用例
+│   ├── cortex_security/    # 安全认证
+│   ├── cortex_monitor/     # 监控日志
+│   ├── cortex_backup/      # 备份恢复
+│   ├── scheduler/          # 任务调度
+│   ├── worker/            # 工作节点
+│   ├── clustering/        # 聚类算法
+│   ├── sharding/          # 数据分片
+│   ├── discovery/         # 服务发现
+│   └── coordinator/       # 领导选举
+├── python/                # Python SDK
+├── deploy/               # 部署配置
+├── .github/workflows/     # CI/CD 流水线
+└── tests/                # 测试用例
 ```
 
 ## 功能模块
@@ -227,13 +227,13 @@ cargo tarpaulin --workspace
 
 ## 路线图
 
-### v0.3.0 (Q2 2024)
+### v0.3.0 (2024年Q2)
 - [ ] 多租户支持
 - [ ] 实时复制
 - [ ] 增量备份
 - [ ] 自动化运维 API
 
-### v0.4.0 (Q3 2024)
+### v0.4.0 (2024年Q3)
 - [ ] 图数据库支持
 - [ ] 时序数据支持
 - [ ] 边缘计算集成
