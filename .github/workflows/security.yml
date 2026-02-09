@@ -200,12 +200,12 @@ jobs:
           grep -r "unsafe {" src/ --include="*.rs" || echo "No unsafe blocks found"
 
       - name: Run cargo-deny
-        uses:EmbarkStudios/cargo-deny-action@v1
+        uses: EmbarkStudios/cargo-deny-action@v1
         with:
           command: check all
 
       - name: Check dependencies license
-        uses:EmbarkStudios/cargo-deny-action@v1
+        uses: EmbarkStudios/cargo-deny-action@v1
         with:
           command: license --data-licenses-file
 
