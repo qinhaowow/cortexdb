@@ -140,15 +140,15 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
       
       - name: Test Scheduler Module
-        run: cargo test --lib -- scheduler:: --nocapture
+        run: "cargo test --lib -- scheduler:: --nocapture"
       
       - name: Test Worker Module
-        run: cargo test --lib -- worker:: --nocapture
+        run: "cargo test --lib -- worker:: --nocapture"
       
       - name: Test Clustering Module
         run: |
           echo "Running clustering module tests..."
-          cargo test --lib -- clustering:: --nocapture
+          "cargo test --lib -- clustering:: --nocapture"
       
       - name: Test Clustering Algorithms
         run: |
@@ -158,15 +158,15 @@ jobs:
       
       - name: Test Sharding Module
         run: |
-          cargo test --lib -- sharding:: --nocapture
+          "cargo test --lib -- sharding:: --nocapture"
       
       - name: Test Discovery Module
         run: |
-          cargo test --lib -- discovery:: --nocapture
+          "cargo test --lib -- discovery:: --nocapture"
       
       - name: Test Coordinator Module
         run: |
-          cargo test --lib -- coordinator:: --nocapture
+          "cargo test --lib -- coordinator:: --nocapture"
 
   benchmark:
     name: Benchmarks
