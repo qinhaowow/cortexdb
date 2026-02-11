@@ -1,51 +1,139 @@
-version: '3.8'
+﻿version: '3.8'
 
 services:
-  cortexdb:
-    build:
-      context: ../../
-      dockerfile: deploy/docker/Dockerfile
+  coretexdb:
+    image: coretexdb:latest
+    container_name: coretexdb
+    restart: unless-stopped
     ports:
-      - "8000:8000"  # REST API
-      - "9000:9000"  # gRPC API
-      - "5432:5432"  # PostgreSQL protocol
-    volumes:
-      - ./data:/app/data
-      - ./config:/app/config
+      - "8080:8080"
+      - "50051:50051"
     environment:
-      - RUST_LOG=info
-      - CORTEXDB_DATA_DIR=/app/data
-      - CORTEXDB_CONFIG_DIR=/app/config
-    restart: unless-stopped
-
-  cortexdb-worker:
-    build:
-      context: ../../
-      dockerfile: deploy/docker/Dockerfile
-    command: ["cortex", "worker", "--host", "0.0.0.0", "--port", "8001"]
+      - CORTEXDB_HOST=0.0.0.0
+      - CORTEXDB_PORT=8080
+      - CORTEXDB_GRPC_PORT=50051
+      - CORTEXDB_DATA_DIR=/data
+      - CORTEXDB_LOG_DIR=/var/log/coretexdb
+      - CORTEXDB_MODE=standalone
     volumes:
-      - ./data:/app/data
-    environment:
-      - RUST_LOG=info
-      - CORTEXDB_DATA_DIR=/app/data
-    restart: unless-stopped
-    depends_on:
-      - cortexdb
+      - coretexdb_data:/data
+      - coretexdb_logs:/var/log/coretexdb
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - coretexdb-network
+    labels:
+      - "coretexdb.version=${VERSION:-latest}"
+      - "coretexdb.mode=standalone"
 
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v2.45.0
+    container_name: prometheus
+    restart: unless-stopped
     ports:
       - "9090:9090"
     volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
-    restart: unless-stopped
+      - ./deploy/docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/docker/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+    networks:
+      - coretexdb-network
+    labels:
+      - "coretexdb.component=monitoring"
 
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:10.0.0
+    container_name: grafana
+    restart: unless-stopped
     ports:
       - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
     volumes:
-      - ./grafana:/var/lib/grafana
-    restart: unless-stopped
+      - grafana_data:/var/lib/grafana
+      - ./deploy/docker/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/docker/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks:
+      - coretexdb-network
     depends_on:
       - prometheus
+    labels:
+      - "coretexdb.component=monitoring"
+
+  fluentd:
+    image: fluent/fluentd-kubernetes-daemonset:v1.16-debian-elasticsearch8-1
+    container_name: fluentd
+    restart: unless-stopped
+    ports:
+      - "24224:24224"
+      - "24224:24224/udp"
+    environment:
+      - FLUENT_ELASTICSEARCH_HOST=elasticsearch
+      - FLUENT_ELASTICSEARCH_PORT=9200
+    volumes:
+      - coretexdb_logs:/var/log/coretexdb
+      - /var/log:/var/log:ro
+    networks:
+      - coretexdb-network
+    labels:
+      - "coretexdb.component=logging"
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.10.0
+    container_name: elasticsearch
+    restart: unless-stopped
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - coretexdb-network
+    labels:
+      - "coretexdb.component=logging"
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.10.0
+    container_name: kibana
+    restart: unless-stopped
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    networks:
+      - coretexdb-network
+    depends_on:
+      - elasticsearch
+    labels:
+      - "coretexdb.component=logging"
+
+volumes:
+  coretexdb_data:
+    driver: local
+  coretexdb_logs:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  elasticsearch_data:
+    driver: local
+
+networks:
+  coretexdb-network:
+    driver: bridge

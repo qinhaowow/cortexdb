@@ -1,0 +1,29 @@
+[Unit]
+Description=CoretexDB Vector Database
+Documentation=https://coretexdb.cn/docs
+After=network.target
+
+[Service]
+Type=simple
+User=coretexdb
+Group=coretexdb
+ExecStart=/opt/coretexdb/coretex
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:/var/log/coretex.log
+StandardError=append:/var/log/coretex-error.log
+
+Environment=CORETEXDB_DATA_DIR=/var/lib/coretexdb
+Environment=CORETEXDB_LOG_DIR=/var/log/coretexdb
+Environment=CORETEXDB_HOST=0.0.0.0
+Environment=CORETEXDB_PORT=8080
+Environment=CORETEXDB_GRPC_PORT=50051
+
+ProtectSystem=strict
+ReadWritePaths=/var/lib/coretexdb /var/log/coretexdb
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

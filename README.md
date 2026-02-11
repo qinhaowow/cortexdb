@@ -1,363 +1,99 @@
-<<<<<<< HEAD
-# CoretexDB - 企业级多模态向量数据库
-
-<div align="center">
-
-[![License](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Rust Version](https://img.shields.io/badge/Rust-1.70+-orange.svg)](https://www.rust-lang.org)
-[![CI Status](https://img.shields.io/github/actions/workflow/status/cortexdb/cortexdb/Ci.yaml?branch=main)](https://github.com/cortexdb/cortexdb/actions)
-[![Coverage](https://img.shields.io/codecov/c/github/cortexdb/cortexdb)](https://codecov.io/gh/cortexdb/cortexdb)
-[![Documentation](https://img.shields.io/docsrs/cortexdb)](https://docs.rs/cortexdb)
-
-**CortexDB** 是一个企业级分布式向量数据库，专为 AI 应用设计，支持多模态数据存储与检索。
-
-[English](README.md) | [中文](README_CN.md)
-
-</div>
-
-## 特性
-
-### 核心特性
-
-- **高性能向量搜索**：支持十亿级向量毫秒级检索
-- **多模态支持**：文本、图像、音频等任意向量数据
-- **分布式架构**：水平扩展，支持多节点集群
-- **强一致性**：基于 Raft 协议的分布式共识
-- **企业级安全**：RBAC 权限管理，数据加密
-
-### 高级特性
-
-| 模块 | 功能 |
-|------|------|
-| **AI 引擎** | 自动调参、模型仓库、联邦学习、隐私计算 |
-| **聚类分析** | Streaming K-Means、BIRCH、ANN 索引 |
-| **调度系统** | 优先级调度、公平分享、令牌桶策略 |
-| **服务发现** | etcd/Consul 集成、动态注册 |
-| **负载均衡** | 一致性哈希、轮询、最少连接 |
-
-## 快速开始
-
-### 安装
-
-```bash
-# 从源码编译
-git clone https://github.com/cortexdb/cortexdb.git
-cd cortexdb
-cargo install --path . --features full
-
-# 或者使用 Docker
-docker run -p 8080:8080 cortexdb/cortexdb:latest
-```
-
-### 使用示例
-
-```rust
-use cortexdb::{CortexDB, Vector};
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let db = CortexDB::new().await?;
-    
-    // 存储向量
-    let vector = Vector::new(vec![0.1, 0.2, 0.3, 0.4]);
-    db.store("doc1", &vector, &serde_json::json!({
-        "text": "Hello, CortexDB!"
-    })).await?;
-    
-    // 相似性搜索
-    let results = db.search(&[0.1, 0.2, 0.3, 0.4], 10).await?;
-    
-    Ok(())
-}
-```
-
-### Python API
-
-```python
-pip install cortexdb
-
-from cortexdb import CortexDB
-
-db = CortexDB()
-db.store("doc1", [0.1, 0.2, 0.3, 0.4], {"text": "Hello!"})
-results = db.search([0.1, 0.2, 0.3, 0.4], k=10)
-```
-
-## 项目架构
-
-```
-CortexDB/
-├── src/
-│   ├── cortex_core/      # 核心类型、配置、模式
-│   ├── cortex_storage/    # 存储引擎
-│   ├── cortex_index/      # 索引管理
-│   ├── cortex_query/      # 查询处理
-│   ├── cortex_api/        # REST/gRPC API
-│   ├── cortex_distributed/ # 分布式协调
-│   ├── cortex_security/   # 安全认证
-│   ├── cortex_monitor/    # 监控日志
-│   ├── cortex_backup/     # 备份恢复
-│   ├── scheduler/         # 任务调度
-│   ├── worker/           # 工作节点
-│   ├── clustering/       # 聚类算法
-│   ├── sharding/         # 数据分片
-│   ├── discovery/        # 服务发现
-│   └── coordinator/      # 领导选举
-├── python/               # Python SDK
-├── deploy/              # 部署配置
-├── .github/workflows/    # CI/CD 流水线
-└── tests/               # 测试用例
-```
-
-## 功能模块
-
-### 存储层
-
-| 模块 | 功能 | 状态 |
-|------|------|------|
-| MemoryStorage | 内存存储 | ✅ |
-| PersistentStorage | 持久化存储 | ✅ |
-| RocksDB 集成 | 磁盘存储 | ✅ |
-| LSM Tree | 日志结构合并树 | ✅ |
-| 列式存储 | 分析查询优化 | ✅ |
-
-### 索引层
-
-| 索引类型 | 算法 | 状态 |
-|----------|------|------|
-| 向量索引 | HNSW | ✅ |
-| | DiskANN | ✅ |
-| | BruteForce | ✅ |
-| 标量索引 | B-Tree | ✅ |
-| | Hash | ✅ |
-| 全文搜索 | Tantivy | ✅ |
-| 图索引 | HNSW | ✅ |
-
-### API 层
-
-| 协议 | 实现 | 状态 |
-|------|------|------|
-| REST | Axum | ✅ |
-| gRPC | Tonic | ✅ |
-| WebSocket | Tungstenite | ✅ |
-| PostgreSQL | Postgres Wire | ✅ |
-| GraphQL | Juniper | ✅ |
-
-### 分布式层
-
-| 功能 | 实现 | 状态 |
-|------|------|------|
-| 集群管理 | Gossip | ✅ |
-| 分片策略 | 一致性哈希 | ✅ |
-| 领导选举 | Raft | ✅ |
-| 服务发现 | etcd/Consul | ✅ |
-| 负载均衡 | 多种策略 | ✅ |
-
-## 构建配置
-
-### 特性标志
-
-```bash
-# 基础安装
-cargo build --release
-
-# 完整功能
-cargo build --release --features full
-
-# 指定特性
-cargo build --release \
-    --features "grpc,distributed,postgres"
-
-# Python 支持
-cargo build --release --features python
-```
-
-### Docker 构建
-
-```bash
-# 构建镜像
-docker build -t cortexdb:latest .
-
-# 多架构构建
-docker buildx build -t cortexdb:latest \
-    --platform linux/amd64,linux/arm64 \
-    --push .
-```
-
-## 测试
-
-```bash
-# 运行所有测试
-cargo test --workspace
-
-# 运行集成测试
-cargo test --test integration
-
-# 运行基准测试
-cargo bench
-
-# 代码覆盖率
-cargo tarpaulin --workspace
-```
-
-## 文档
-
-- [用户指南](docs/user-guide.md)
-- [API 文档](https://docs.cortexdb.io/api)
-- [架构设计](docs/architecture.md)
-- [部署指南](docs/deployment.md)
-- [最佳实践](docs/best-practices.md)
-
-## 性能基准
-
-| 数据集 | 向量维度 | 向量数量 | QPS | P99 延迟 |
-|--------|----------|----------|-----|----------|
-| SIFT-1M | 128 | 1,000,000 | 50,000 | 2ms |
-| GIST-1M | 960 | 1,000,000 | 10,000 | 5ms |
-| Deep-1B | 96 | 1,000,000,000 | 1,000 | 50ms |
-
-## 贡献指南
-
-欢迎贡献代码！请阅读 [贡献指南](CONTRIBUTING.md)。
-
-1. Fork 本仓库
-2. 创建特性分支 (`git checkout -b feature/amazing-feature`)
-3. 提交更改 (`git commit -m 'Add amazing feature'`)
-4. 推送到分支 (`git push origin feature/amazing-feature`)
-5. 创建 Pull Request
-
-## 路线图
-
-### v0.3.0 (Q2 2024)
-- [ ] 多租户支持
-- [ ] 实时复制
-- [ ] 增量备份
-- [ ] 自动化运维 API
-
-### v0.4.0 (Q3 2024)
-- [ ] 图数据库支持
-- [ ] 时序数据支持
-- [ ] 边缘计算集成
-- [ ] 多云部署
-
-## 许可证
-
-本项目采用 Apache License 2.0 许可证。详见 [LICENSE](LICENSE) 文件。
-
-## 社区
-
-- [Discord](https://discord.gg/cortexdb)
-- [Twitter](https://twitter.com/cortexdb_io)
-- [LinkedIn](https://linkedin.com/company/cortexdb)
-
-## 致谢
-
-感谢所有贡献者的支持！
-
-<div align="center">
-
-**用 ❤️ 构建**
-
-</div>
-=======
 # CoretexDB
 
 企业级分布式向量数据库
 
 ## 项目简介
 
-CoretexDB 是一款高性能的企业级分布式向量数据库，专为 AI 应用场景设计。它支持向量检索、全文搜索、标量查询等多种数据访问模式，并提供完整的 SDK 和部署解决方案。
+CoretexDB 是一款高性能的企业级分布式向量数据库，专为 AI 应用场景设计。作为 CortexDB 的继任者，CoretexDB 在架构、性能和功能方面都进行了全面升级，支持向量检索、全文搜索、标量查询等多种数据访问模式，并提供完整的 SDK 和部署解决方案。
 
 ## 核心特性
 
-### 🔍 强大的向量检索
-- 支持多种向量索引算法：HNSW、DiskANN、Brute Force
-- 支持搜索（向量混合 + 标量）
-- 支持实时向量插入和更新
-- 高精度近似最近邻搜索
+### 强大的向量检索
 
-### 🗄️ 灵活的存储引擎
-- 自研 CoretexDB 存储引擎
-- 支持持久化存储和内存存储
-- 自动压缩和优化
-- 完善的事务支持（MVCC）
+CoretexDB 提供了多种先进的向量索引算法，能够高效处理大规模向量数据。系统支持 HNSW（Hierarchical Navigable Small World）算法，这是一种基于图的近似最近邻搜索算法，在高维空间中表现出色，召回率高且查询延迟低。同时支持 DiskANN 算法，这是一种针对磁盘存储优化的索引结构，能够在有限内存条件下处理数十亿级别的向量数据。此外，系统还提供了 Brute Force 暴力搜索作为基准对比方案，适用于小规模数据集或需要精确结果的场景。向量索引支持实时插入和更新，无需重建整个索引即可添加新向量，这使得系统能够支持流式数据摄入场景。系统还支持混合搜索功能，可以将向量相似度搜索与传统的标量条件查询结合起来，实现更精准的检索结果。
 
-### 🌐 多协议支持
-- gRPC 高性能接口
-- RESTful API
-- PostgreSQL 兼容协议
-- GraphQL 接口
-- Python SDK 集成
+### 灵活的存储引擎
 
-### 📦 多语言 SDK
-- **Go SDK**: 异步客户端，高性能
-- **Java SDK**: Maven 包管理
-- **Node.js SDK**: TypeScript 支持
-- **C++ SDK**: CMake 构建
+CoretexDB 自研了 CoretexDB 存储引擎，这是一个专门为向量数据优化的存储系统。存储引擎支持两种模式：内存存储模式适用于对延迟敏感的场景，所有数据都驻留在内存中，提供微秒级的访问延迟；持久化存储模式则将数据写入磁盘，通过 WAL（Write-Ahead Log）确保数据持久性，即使在系统崩溃后也能恢复数据。存储引擎内置了自动压缩功能，支持 LZ4、Zstd 等多种压缩算法，能够显著降低存储成本。系统还实现了完善的事务支持，采用 MVCC（多版本并发控制）机制，提供了快照隔离级别，确保在高并发场景下的数据一致性。此外，存储引擎还支持数据分片和自动负载均衡，能够根据数据分布自动调整存储策略。
 
-### 🐍 Python 生态系统
-- LangChain 集成
-- HuggingFace 集成
-- OpenAI 集成
-- 完整的 Python 客户端
+### 多协议支持
 
-### 🔒 企业级功能
-- 分布式集群支持
-- 自动分片和负载均衡
-- 备份和恢复
-- 监控和告警
-- 安全认证和加密
+为了满足不同场景的需求，CoretexDB 提供了丰富的协议支持。gRPC 接口提供了高性能的二进制 RPC 通信，适用于对延迟敏感的生产环境，支持双向流式传输。RESTful API 采用标准的 HTTP/JSON 格式，便于与各种编程语言和框架集成，提供了完整的 OpenAPI 文档。PostgreSQL 兼容协议使得用户可以直接使用现有的 PostgreSQL 客户端和工具链，降低了学习成本。GraphQL 接口提供了灵活的数据查询能力，用户可以精确指定需要返回的字段，减少不必要的数据传输。Python SDK 与主流 AI 框架深度集成，包括 LangChain、HuggingFace 和 OpenAI，方便 AI 开发者快速上手。
+
+### 多语言 SDK
+
+CoretexDB 提供了四种主流编程语言的官方 SDK，每种 SDK 都经过精心设计，充分考虑了各语言的特性和最佳实践。Go SDK 采用异步编程模型，基于 tokio 运行时，支持高并发连接，提供了连接池、超时重试、断线重连等企业级功能。Java SDK 提供了同步和异步两种 API 风格，基于 Netty 实现，支持 Maven 中央仓库一键依赖。Node.js SDK 完全使用 TypeScript 编写，提供了完整的类型定义，与现代 JavaScript/TypeScript 开发流程无缝集成。C++ SDK 提供了 CMake 构建配置，支持静态和动态链接，适用于性能敏感的场景或嵌入式部署。
+
+### Python 生态系统
+
+Python 是 AI 领域最流行的编程语言，CoretexDB 为 Python 开发者提供了全方位的支持。Python 客户端提供了简洁易用的 API，与 PyTorch、TensorFlow 等深度学习框架的数据结构兼容。LangChain 集成使得用户可以轻松地将 CoretexDB 作为向量存储后端使用，构建复杂的 AI 应用。HuggingFace 集成支持直接使用 HuggingFace Hub 中的预训练模型生成向量，并存储到 CoretexDB 中。OpenAI 集成提供了与 OpenAI Embedding API 的桥接，可以方便地将 OpenAI 生成的向量存储到本地。此外，Python 包还提供了 CLI 工具和监控脚本，方便日常运维操作。
+
+### 企业级功能
+
+CoretexDB 提供了完整的企业级功能，满足生产环境的各种需求。分布式集群支持自动故障转移和负载均衡，单个节点故障不会影响整体服务。自动分片功能会根据数据量和查询负载自动调整数据分布，用户无需手动干预。备份和恢复功能支持增量备份和定时任务，可以恢复到任意时间点。监控和告警系统集成了 Prometheus 指标收集和 Grafana 仪表盘，支持自定义告警规则。安全方面提供了基于 JWT 的身份认证、细粒度的权限控制和数据传输加密。此外，系统还支持与 Consul、Etcd 等服务发现系统集成，便于构建微服务架构。
 
 ## 快速开始
 
 ### Docker 部署
 
-```bash
-# 启动单节点
-docker-compose -f deploy/docker/docker-compose.yml up -d
+使用 Docker 部署是最简单的方式，适合快速验证和开发测试场景。首先确保系统已安装 Docker 和 Docker Compose，然后执行以下命令启动单节点服务：
 
-# 访问页面
-# Grafana: http://localhost:3001 (admin/admin)
-# Prometheus: http://localhost:9090
+```bash
+cd deploy/docker
+docker-compose up -d
 ```
+
+服务启动后，可以通过以下地址访问各个组件。RESTful API 监听在 8080 端口，提供数据库的读写操作。gRPC 服务监听在 50051 端口，适用于高性能场景。Grafana 监控面板在 3001 端口，默认账号 admin/admin。Prometheus 指标服务在 9090 端口，可以连接 Grafana 或其他监控系统。
 
 ### Kubernetes 部署
 
-```bash
-# 单节点部署
-kubectl apply -f deploy/k8s/
+对于生产环境，推荐使用 Kubernetes 部署。单节点部署适用于中小规模数据量，命令如下：
 
-# 高可用部署
+```bash
+kubectl apply -f deploy/k8s/
+```
+
+高可用部署适用于生产环境，提供了多副本配置和自动故障转移：
+
+```bash
 kubectl apply -f deploy/kubernetes/
 ```
 
 ### Helm 部署
 
-```bash
-# 添加 Helm 仓库
-helm repo add coretexdb https://qinhaowow.github.io/cortexdb-helm
+使用 Helm 可以更灵活地配置部署参数。首先添加 Helm 仓库：
 
-# 安装
+```bash
+helm repo add coretexdb https://qinhaowow.github.io/cortexdb-helm
 helm install my-coretexdb coretexdb/coretexdb -f deploy/helm/coretexdb/values.yaml
 ```
 
 ### 从源码编译
 
+从源码编译可以获得最新的功能和改进。首先克隆仓库并进入项目目录：
+
 ```bash
-# 克隆仓库
 git clone https://github.com/qinhaowow/cortexdb.git
 cd cortexdb
+```
 
-# 编译
+使用 cargo 编译发布版本：
+
+```bash
 cargo build --release
+```
 
-# 运行
+运行编译后的二进制文件：
+
+```bash
 ./target/release/coretexdb --config src/coretex_core/config.rs
 ```
 
 ## SDK 使用示例
 
-### Go
+### Go SDK 示例
+
+Go SDK 提供了异步客户端，支持高并发场景。以下是基本使用示例：
 
 ```go
 package main
@@ -365,89 +101,252 @@ package main
 import (
     "context"
     "log"
+    "time"
     
     "github.com/qinhaowow/cortexdb/SDK/go/coretexdb"
 )
 
 func main() {
-    client := coretexdb.NewClient("localhost:50051")
+    // 创建客户端配置
+    config := coretexdb.Config{
+        Address:     "localhost:50051",
+        MaxRetries:  3,
+        Timeout:     time.Second * 10,
+    }
+    
+    // 创建客户端
+    client, err := coretexdb.NewClient(config)
+    if err != nil {
+        log.Fatalf("Failed to create client: %v", err)
+    }
+    defer client.Close()
     
     ctx := context.Background()
     
-    // 插入向量
-    vectors := [][]float32{
-        {0.1, 0.2, 0.3},
-        {0.4, 0.5, 0.6},
+    // 创建集合
+    err = client.CreateCollection(ctx, &coretexdb.CollectionConfig{
+        Name:         "my_collection",
+        Dimension:    768,
+        MetricType:   coretexdb.CosineSimilarity,
+        IndexType:    coretexdb.HNSW,
+    })
+    if err != nil {
+        log.Fatalf("Failed to create collection: %v", err)
     }
     
-    err := client.Insert(ctx, "my_collection", vectors)
-    if err != nil {
-        log.Fatal(err)
+    // 准备向量数据
+    vectors := make([][]float32, 1000)
+    for i := range vectors {
+        vectors[i] = make([]float32, 768)
+        for j := range vectors[i] {
+            vectors[i][j] = float32(i%256) / 255.0
+        }
     }
+    
+    // 插入向量
+    ids, err := client.Insert(ctx, "my_collection", vectors, nil)
+    if err != nil {
+        log.Fatalf("Failed to insert vectors: %v", err)
+    }
+    log.Printf("Inserted %d vectors", len(ids))
     
     // 搜索向量
-    query := []float32{0.1, 0.2, 0.3}
-    results, err := client.Search(ctx, "my_collection", query, 10)
-    if err != nil {
-        log.Fatal(err)
+    query := make([]float32, 768)
+    for i := range query {
+        query[i] = 0.5
     }
     
-    log.Printf("Found %d results", len(results))
+    results, err := client.Search(ctx, &coretexdb.SearchRequest{
+        Collection: "my_collection",
+        Query:     query,
+        TopK:      10,
+        Filters:   nil,
+    })
+    if err != nil {
+        log.Fatalf("Failed to search: %v", err)
+    }
+    
+    for _, r := range results {
+        log.Printf("ID: %s, Score: %.4f", r.ID, r.Score)
+    }
 }
 ```
 
-### Python
+### Python SDK 示例
+
+Python 客户端与主流 AI 框架无缝集成，使用非常简单：
 
 ```python
-from coretexdb import CoretexDB
+from coretexdb import CoretexDB, CollectionConfig
+import numpy as np
 
 # 连接数据库
 client = CoretexDB(host="localhost", port=50051)
 
 # 创建集合
-client.create_collection("my_collection", dimension=768)
+config = CollectionConfig(
+    name="my_collection",
+    dimension=768,
+    metric_type="cosine",
+    index_type="hnsw"
+)
+client.create_collection(config)
 
-# 插入向量
-vectors = [
-    [0.1] * 768,
-    [0.2] * 768,
-]
-client.insert("my_collection", vectors)
+# 准备向量数据
+vectors = np.random.randn(1000, 768).astype(np.float32)
+
+# 插入向量（支持批量）
+ids = client.insert("my_collection", vectors, metadata=None)
+print(f"Inserted {len(ids)} vectors")
 
 # 搜索向量
-query = [0.1] * 768
-results = client.search("my_collection", query, top_k=10)
+query = np.random.randn(768).astype(np.float32)
+results = client.search(
+    collection="my_collection",
+    query=query,
+    top_k=10,
+    filters=None
+)
 
 for result in results:
-    print(f"ID: {result.id}, Score: {result.score}")
+    print(f"ID: {result.id}, Score: {result.score:.4f}")
+
+# 使用 LangChain 集成
+from langchain.vectorstores import CoretexDB
+from langchain.embeddings import OpenAIEmbeddings
+
+embeddings = OpenAIEmbeddings()
+vectorstore = CoretexDB.from_documents(documents, embeddings)
+docs = vectorstore.similarity_search("your query")
 ```
 
-### Node.js
+### Node.js SDK 示例
+
+Node.js SDK 完全使用 TypeScript 编写，提供了完整的类型安全：
 
 ```typescript
-import { CoretexDB } from 'coretexdb';
+import { CoretexDB, CollectionConfig } from 'coretexdb';
 
-const client = new CoretexDB({
-  host: 'localhost',
-  port: 50051,
-});
+interface Document {
+    id: string;
+    title: string;
+    content: string;
+    embedding: number[];
+}
 
 async function main() {
-  // 创建集合
-  await client.createCollection('my_collection', { dimension: 768 });
-  
-  // 插入向量
-  const vectors = [
-    new Float32Array(768).fill(0.1),
-    new Float32Array(768).fill(0.2),
-  ];
-  await client.insert('my_collection', vectors);
-  
-  // 搜索向量
-  const query = new Float32Array(768).fill(0.1);
-  const results = await client.search('my_collection', query, { topK: 10 });
-  
-  console.log(`Found ${results.length} results`);
+    const client = new CoretexDB({
+        host: 'localhost',
+        port: 50051,
+        maxRetries: 3,
+        timeout: 10000,
+    });
+
+    try {
+        // 创建集合
+        await client.createCollection({
+            name: 'documents',
+            dimension: 768,
+            metricType: 'cosine',
+            indexType: 'hnsw',
+        });
+
+        // 准备文档数据
+        const documents: Document[] = [
+            {
+                id: 'doc1',
+                title: 'Introduction to Vector Databases',
+                content: 'Vector databases are specialized databases...',
+                embedding: Array(768).fill(0.1),
+            },
+        ];
+
+        // 插入文档
+        const ids = await client.insert<Document>('documents', documents);
+        console.log(`Inserted ${ids.length} documents`);
+
+        // 搜索文档
+        const results = await client.search({
+            collection: 'documents',
+            query: Array(768).fill(0.5),
+            topK: 5,
+        });
+
+        for (const result of results) {
+            console.log(`ID: ${result.id}, Score: ${result.score}`);
+        }
+    } finally {
+        await client.close();
+    }
+}
+
+main().catch(console.error);
+```
+
+### Java SDK 示例
+
+Java SDK 提供了同步和异步两种 API：
+
+```java
+import com.coretexdb.CoretexDBClient;
+import com.coretexdb.models.CollectionConfig;
+import com.coretexdb.models.SearchResult;
+
+import java.util.*;
+import java.util.concurrent.*;
+
+public class Example {
+    public static void main(String[] args) throws Exception {
+        // 创建客户端
+        CoretexDBClient client = new CoretexDBClient(
+            "localhost",
+            50051,
+            3,  // 重试次数
+            10  // 超时秒数
+        );
+
+        try {
+            // 创建集合
+            CollectionConfig config = new CollectionConfig.Builder()
+                .name("my_collection")
+                .dimension(768)
+                .metricType("cosine")
+                .indexType("hnsw")
+                .build();
+            
+            client.createCollection(config);
+            
+            // 准备向量数据
+            List<float[]> vectors = new ArrayList<>();
+            for (int i = 0; i < 1000; i++) {
+                float[] vector = new float[768];
+                Arrays.fill(vector, (float) (i % 256) / 255.0f);
+                vectors.add(vector);
+            }
+            
+            // 插入向量
+            List<String> ids = client.insert("my_collection", vectors, null);
+            System.out.println("Inserted " + ids.size() + " vectors");
+            
+            // 搜索向量
+            float[] query = new float[768];
+            Arrays.fill(query, 0.5f);
+            
+            List<SearchResult> results = client.search(
+                "my_collection",
+                query,
+                10
+            );
+            
+            for (SearchResult result : results) {
+                System.out.printf("ID: %s, Score: %.4f%n", 
+                    result.getId(), result.getScore());
+            }
+            
+        } finally {
+            client.close();
+        }
+    }
 }
 ```
 
@@ -455,101 +354,189 @@ async function main() {
 
 ```
 CoretexDataBases/
-├── src/
-│   ├── coretex_api/        # API 层（gRPC、REST、Python）
-│   ├── coretex_backup/      # 备份和恢复
-│   ├── coretex_cli/        # 命令行工具
-│   ├── coretex_core/       # 核心配置和错误类型
-│   ├── coretex_distributed/ # 分布式协调
-│   ├── coretex_index/      # 索引管理
-│   ├── coretex_monitor/    # 监控和告警
-│   ├── coretex_perf/       # 性能优化
-│   ├── coretex_query/      # 查询处理
-│   ├── coretex_security/   # 安全认证
-│   ├── coretex_storage/    # 存储引擎
-│   └── coretex_utils/      # 工具函数
-├── SDK/                     # 多语言 SDK
-│   ├── cpp/
-│   ├── go/
-│   ├── java/
-│   └── node/
-├── deploy/                  # 部署配置
-│   ├── docker/
-│   ├── kubernetes/
-│   ├── helm/
-│   ├── terraform/
-│   ├── ansible/
-│   └── cicd/
-├── python/                  # Python 包
-└── tests/                   # 测试代码
+├── src/                              # Rust 核心代码
+│   ├── coretex_api/                  # API 层实现
+│   │   ├── grpc/                     # gRPC 服务
+│   │   │   ├── proto/                # Protocol Buffer 定义
+│   │   │   ├── generated.rs          # 自动生成的代码
+│   │   │   └── server.rs             # gRPC 服务器
+│   │   ├── rest/                     # RESTful API
+│   │   │   ├── handlers.rs           # 请求处理器
+│   │   │   ├── routes.rs            # 路由定义
+│   │   │   └── server.rs            # HTTP 服务器
+│   │   └── python/                   # Python 集成
+│   ├── coretex_backup/               # 备份和恢复
+│   │   ├── backup.rs                # 备份逻辑
+│   │   ├── restore.rs               # 恢复逻辑
+│   │   └── replication.rs           # 副本同步
+│   ├── coretex_cli/                  # 命令行工具
+│   │   ├── commands.rs              # 命令定义
+│   │   ├── parser.rs                # 参数解析
+│   │   └── utils.rs                 # 工具函数
+│   ├── coretex_core/                 # 核心类型和配置
+│   │   ├── config.rs                # 配置结构
+│   │   ├── error.rs                 # 错误类型
+│   │   ├── schema.rs                # Schema 定义
+│   │   └── types.rs                 # 基本类型
+│   ├── coretex_distributed/          # 分布式协调
+│   │   ├── cluster.rs               # 集群管理
+│   │   ├── coordinator.rs           # 协调者逻辑
+│   │   ├── metadata.rs              # 元数据管理
+│   │   └── sharding.rs              # 分片策略
+│   ├── coretex_index/                # 索引实现
+│   │   ├── hnsw.rs                  # HNSW 索引
+│   │   ├── diskann.rs               # DiskANN 索引
+│   │   ├── brute_force.rs           # 暴力搜索
+│   │   ├── manager.rs              # 索引管理器
+│   │   └── scalar.rs                # 标量索引
+│   ├── coretex_monitor/              # 监控和告警
+│   │   ├── metrics.rs               # 指标收集
+│   │   ├── health.rs                # 健康检查
+│   │   ├── alerts.rs                # 告警管理
+│   │   └── dashboard.rs             # 仪表盘数据
+│   ├── coretex_perf/                 # 性能优化
+│   │   ├── cache.rs                 # 查询缓存
+│   │   ├── router.rs                # 查询路由
+│   │   ├── parallel.rs              # 并行执行
+│   │   └── optimization.rs          # 优化规则
+│   ├── coretex_query/                # 查询处理
+│   │   ├── planner.rs               # 查询规划
+│   │   ├── optimizer.rs             # 查询优化
+│   │   ├── executor.rs              # 执行引擎
+│   │   └── builder.rs              # 查询构建
+│   ├── coretex_security/             # 安全模块
+│   │   ├── auth.rs                 # 身份认证
+│   │   ├── token.rs                # Token 管理
+│   │   ├── permission.rs           # 权限控制
+│   │   └── encryption.rs           # 数据加密
+│   ├── coretex_storage/              # 存储引擎
+│   │   ├── engine.rs               # 引擎接口
+│   │   ├── memory.rs                # 内存存储
+│   │   ├── persistent.rs            # 持久化存储
+│   │   └── cdb/                     # CoretexDB 格式
+│   └── coretex_utils/                # 工具函数
+│       ├── logging.rs               # 日志记录
+│       ├── metrics.rs               # 指标工具
+│       ├── telemetry.rs             # 遥测收集
+│       └── retry.rs                 # 重试逻辑
+│
+├── SDK/                              # 多语言 SDK
+│   ├── cpp/                          # C++ SDK
+│   │   ├── coretexdb/
+│   │   │   ├── include/             # 头文件
+│   │   │   ├── src/                # 实现
+│   │   │   └── examples/           # 示例
+│   │   └── CMakeLists.txt
+│   ├── go/                           # Go SDK
+│   │   └── coretexdb/
+│   │       ├── client.go            # 客户端
+│   │       ├── async_client.go      # 异步客户端
+│   │       ├── models.go            # 数据模型
+│   │       └── examples/            # 示例
+│   ├── java/                         # Java SDK
+│   │   └── coretexdb/
+│   │       ├── src/main/java/       # 源代码
+│   │       └── pom.xml
+│   └── node/                         # Node.js SDK
+│       └── coretexdb/
+│           ├── src/                 # 源代码
+│           ├── examples/            # 示例
+│           └── package.json
+│
+├── python/                           # Python 包
+│   ├── coretexdb/                   # 主包
+│   │   ├── client.py                # 客户端
+│   │   ├── core.py                  # 核心功能
+│   │   └── version.py               # 版本信息
+│   ├── integrations/                 # AI 框架集成
+│   │   ├── langchain.py             # LangChain 集成
+│   │   ├── huggingface.py          # HuggingFace 集成
+│   │   └── openai.py               # OpenAI 集成
+│   ├── pyproject.toml
+│   └── setup.py
+│
+├── deploy/                          # 部署配置
+│   ├── docker/                      # Docker 配置
+│   │   ├── Dockerfile              # 构建镜像
+│   │   ├── docker-compose.yml      # 编排配置
+│   │   ├── grafana/                # Grafana 仪表盘
+│   │   └── prometheus/             # Prometheus 配置
+│   ├── kubernetes/                  # K8s 配置
+│   │   ├── deployment.yaml         # 部署配置
+│   │   ├── service.yaml            # 服务配置
+│   │   ├── deployment.ha.yaml      # 高可用配置
+│   │   └── namespace.yaml          # 命名空间
+│   ├── helm/                        # Helm Chart
+│   │   └── coretexdb/
+│   │       ├── Chart.yaml
+│   │       ├── values.yaml
+│   │       └── values.prod.yaml
+│   ├── terraform/                   # Terraform 配置
+│   │   ├── main.tf
+│   │   ├── variables.tf
+│   │   └── outputs.tf
+│   ├── ansible/                     # Ansible Playbook
+│   │   ├── inventory/
+│   │   ├── playbooks/
+│   │   └── templates/
+│   └── cicd/                         # CI/CD 配置
+│       └── github-actions/
+│
+├── tests/                            # 测试代码
+│   ├── unit/                         # 单元测试
+│   ├── integration/                  # 集成测试
+│   ├── performance/                 # 性能测试
+│   ├── chaos/                        # 混沌测试
+│   └── property/                     # 属性测试
+│
+├── examples/                         # 示例程序
+├── experiments/                       # 实验性功能
+├── tools/                            # 工具脚本
+├── Cargo.toml                         # Rust 依赖配置
+├── Makefile                           # 构建脚本
+└── README.md                          # 项目文档
 ```
 
 ## 部署架构
 
-### Docker Compose（开发/测试）
+### Docker Compose 架构
 
-```
-┌─────────────────────────────────────────┐
-│         Docker Compose                   │
-│  ┌───────────┐                          │
-│  │ CoretexDB  │                          │
-│  └───────────┘                          │
-│  ┌───────────┐ ┌───────────┐            │
-│  │ Grafana   │ │Prometheus │            │
-│  └───────────┘ └───────────┘            │
-└─────────────────────────────────────────┘
-```
+Docker Compose 部署适用于开发、测试和小规模生产环境。在这种模式下，所有组件运行在同一台机器上，通过 Docker 网络进行通信。架构包含 CoretexDB 主服务实例、Prometheus 指标收集器、Grafana 监控仪表盘和 Alertmanager 告警管理器。这种部署方式简单快捷，配置集中在 docker-compose.yml 文件中，支持一键启动和停止。
 
-### Kubernetes（生产）
+### Kubernetes 生产架构
 
-```
-┌─────────────────────────────────────────────────────┐
-│                    Kubernetes                        │
-│  ┌─────────────────────────────────────────────┐   │
-│  │           CoretexDB Cluster                  │   │
-│  │  ┌─────┐ ┌─────┐ ┌─────┐ ┌─────┐ ┌─────┐  │   │
-│  │  │ Pod │ │ Pod │ │ Pod │ │ Pod │ │ Pod │  │   │
-│  │  └──┬──┘ └──┬──┘ └──┬──┘ └──┬──┘ └──┬──┘  │   │
-│  │     │        │        │        │        │     │   │
-│  │  ┌──┴──┐ ┌──┴──┐ ┌──┴──┐ ┌──┴──┐ ┌──┴──┐  │   │
-│  │  │ PVC │ │ PVC │ │ PVC │ │ PVC │ │ PVC │  │   │
-│  │  └─────┘ └─────┘ └─────┘ └─────┘ └─────┘  │   │
-│  └─────────────────────────────────────────────┘   │
-│  ┌─────────────────────────────────────────────┐   │
-│  │           Monitoring Stack                   │   │
-│  │  ┌─────────┐ ┌─────────┐ ┌────────────────┐ │   │
-│  │  │Grafana  │ │Prometheus│ │Alertmanager   │ │   │
-│  │  └─────────┘ └─────────┘ └────────────────┘ │   │
-│  └─────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────┘
-```
+Kubernetes 部署适用于大规模生产环境，提供了高可用、自动伸缩和自愈能力。架构分为数据层、控制层和监控层三个部分。数据层包含 CoretexDB Pod 集群，每个 Pod 挂载 PersistentVolumeClaim 存储数据，支持跨可用区分布。控制层包含 StatefulSet 管理 Pod 生命周期、Service 提供负载均衡和 DNS 发现、ConfigMap 和 Secret 管理配置和密钥。监控层包含 Prometheus Operator 收集指标、Grafana 显示仪表盘、Alertmanager 处理告警、Ingress 暴露外部访问。
+
+### 集群拓扑
+
+在分布式模式下，CoretexDB 采用主从架构实现高可用。集群由多个节点组成，其中一个节点被选为 Leader，负责处理写请求和协调分布式事务。Follower 节点接收 Leader 的复制数据，提供只读查询服务，实现读写分离。当 Leader 节点故障时，系统通过 Raft 协议自动选举新的 Leader，确保服务连续性。数据通过一致性哈希分片分布到不同节点，支持水平扩展存储容量和查询吞吐。
 
 ## 性能基准
 
-| 指标 | 数值 |
-|------|------|
-| 向量插入速度 | 100,000 向量/秒 |
-| 向量搜索延迟 (99%) | < 10ms |
-| 支持维度 | 最高 4096 |
-| 召回率 (HNSW) | > 95% |
-| 集群节点数 | 最多 1000 |
+CoretexDB 在标准基准测试中表现出色，以下是典型配置下的性能数据。向量插入速度方面，单节点配置下可以达到每秒 10 万向量的插入速度，批量插入时吞吐量更高。向量搜索延迟方面，HNSW 索引在 99 分位延迟低于 10 毫秒，P99 延迟取决于索引参数和数据分布。维度支持方面，最高支持 4096 维向量，维度越高精度越好但性能开销越大。召回率方面，HNSW 索引在 efSearch=100 时召回率超过 95%。集群扩展方面，单集群最多支持 1000 个节点，扩展后线性提升吞吐。
+
+## 系统要求
+
+### 最低要求
+
+最低配置适用于开发和测试环境。CPU 需要至少 2 核，内存至少 4GB，存储至少 10GB 可用空间。操作系统支持 Linux（推荐 Ubuntu 20.04+）、macOS 11+ 和 Windows 10+。Rust 工具链版本要求 1.70 或更高。
+
+### 推荐配置
+
+推荐配置适用于生产环境的中等规模部署。CPU 需要 8 核或更多，内存至少 32GB，存储建议使用 SSD 且至少 100GB 可用空间。网络方面建议使用千兆以太网，集群部署时节点间延迟应低于 1 毫秒。
 
 ## 文档
 
-- [API 文档](https://github.com/qinhaowow/cortexdb/wiki/API)
-- [SDK 使用指南](https://github.com/qinhaowow/cortexdb/wiki/SDK)
-- [部署指南](https://github.com/qinhaowow/cortexdb/wiki/Deployment)
-- [架构设计](https://github.com/qinhaowow/cortexdb/wiki/Architecture)
+项目提供了全面的文档，涵盖从入门到高级的所有主题。API 文档位于项目的 docs 目录或在线文档站点，包含所有 gRPC 和 REST API 的详细说明。SDK 指南提供了各语言 SDK 的安装、配置和使用方法，包含丰富的代码示例。部署指南详细说明了各种部署方式的配置选项和最佳实践。架构设计文档深入解析了系统的内部实现，包括索引算法、存储引擎和分布式协议。
 
 ## 许可证
 
-本项目采用 MIT 许可证。
+本项目采用 MIT 许可证开源，允许自由使用、修改和分发。详细信息请参阅 LICENSE 文件。
 
 ## 贡献
 
-欢迎提交 Issue 和 Pull Request！
+欢迎社区贡献代码、文档和反馈。贡献前请阅读 CONTRIBUTING.md 了解贡献流程和代码规范。可以通过提交 Issue 报告 bug 或提出新功能建议，也可以提交 Pull Request 贡献代码修复或新功能。
 
 ## 联系方式
 
-- GitHub: [https://github.com/qinhaowow/cortexdb](https://github.com/qinhaowow/cortexdb)
->>>>>>> 24c52bf (docs: Update README with CoretexDB branding and comprehensive documentation)
+项目主页位于 GitHub：https://github.com/qinhaowow/cortexdb。文档站点提供详细的用户指南和 API 参考。如有问题或建议，请通过 GitHub Issues 与我们联系。

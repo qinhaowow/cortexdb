@@ -1,63 +1,19 @@
-//! CortexDB - 企业级多模态向量数据库
-//! 
-//! # 项目架构
-//!
-//! 本项目采用分层架构设计，包含以下核心模块：
-//!
-//! ## 核心层 (Core)
-//! - [`cortex_core`] - 核心类型、配置、模式定义
-//! - [`cortex_storage`] - 存储引擎实现
-//! - [`cortex_index`] - 索引管理
-//! - [`cortex_query`] - 查询处理
-//!
-//! ## API 层 (API)
-//! - [`cortex_api`] - REST/gRPC API
-//! - [`api`] - GraphQL/PostgreSQL 协议
-//!
-//! ## 分布式层 (Distributed)
-//! - [`cortex_distributed`] - 分布式协调
-//! - [`distributed`] - 集群管理
-//!
-//! ## 工具层 (Utilities)
-//! - [`cortex_security`] - 认证与安全
-//! - [`cortex_monitor`] - 监控与日志
-//! - [`cortex_backup`] - 备份与恢复
-//!
-//! ## 高级特性 (Advanced)
-//! - [`ai`] - AI/ML 特性
-//! - [`clustering`] - 聚类算法
-//! - [`compute`] - GPU/SIMD 计算
-//!
-//! ## 实验特性 (Experimental)
-//! - 实验功能位于 [`experiments/`] 目录
-//!
-//! # 示例
-//!
-//! ```ignore
-//! use cortexdb::CortexDB;
-//!
-//! #[tokio::main]
-//! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     let db = CortexDB::new().await?;
-//!     Ok(())
-//! }
-//! ```
-//!
 
-#![doc(html_root_url = "https://docs.rs/cortexdb/0.1.0")]
 
-pub mod cortex_core;
-pub mod cortex_storage;
-pub mod cortex_index;
-pub mod cortex_query;
-pub mod cortex_api;
-pub mod cortex_backup;
-pub mod cortex_cli;
-pub mod cortex_distributed;
-pub mod cortex_monitor;
-pub mod cortex_security;
-pub mod cortex_perf;
-pub mod cortex_utils;
+#![doc(html_root_url = "https://docs.rs/coretexdb/0.1.0")]
+
+pub mod coretex_core;
+pub mod coretex_storage;
+pub mod coretex_index;
+pub mod coretex_query;
+pub mod coretex_api;
+pub mod coretex_backup;
+pub mod coretex_cli;
+pub mod coretex_distributed;
+pub mod coretex_monitor;
+pub mod coretex_security;
+pub mod coretex_perf;
+pub mod coretex_utils;
 
 pub mod ai;
 pub mod api;
@@ -91,27 +47,27 @@ pub mod raft;
 #[cfg(feature = "postgres")]
 pub mod postgres;
 
-pub use cortex_core::{Vector, Document, CollectionSchema, DistanceMetric, IndexConfig, IndexType, CortexError, Result};
-pub use cortex_storage::{StorageEngine, MemoryStorage, PersistentStorage};
-pub use cortex_index::{VectorIndex, BruteForceIndex, IndexManager, SearchResult};
-pub use cortex_query::{QueryType, QueryParams, QueryResult, QueryProcessor, QueryPlanner};
-pub use cortex_api::rest::{start_server, ApiConfig};
+pub use coretex_core::{Vector, Document, CollectionSchema, DistanceMetric, IndexConfig, IndexType, CoretexError, Result};
+pub use coretex_storage::{StorageEngine, MemoryStorage, PersistentStorage};
+pub use coretex_index::{VectorIndex, BruteForceIndex, IndexManager, SearchResult};
+pub use coretex_query::{QueryType, QueryParams, QueryResult, QueryProcessor, QueryPlanner};
+pub use coretex_api::rest::{start_server, ApiConfig};
 
 #[cfg(feature = "grpc")]
-pub use cortex_api::grpc::start_server as start_grpc_server;
+pub use coretex_api::grpc::start_server as start_grpc_server;
 
 #[cfg(feature = "distributed")]
-pub use cortex_distributed::{ClusterManager, QueryCoordinator, ShardingStrategy, MetadataManager};
+pub use coretex_distributed::{ClusterManager, QueryCoordinator, ShardingStrategy, MetadataManager};
 
 #[cfg(feature = "distributed")]
-pub use cortex_monitor::{MetricsCollector, HealthChecker, MonitoringDashboard};
+pub use coretex_monitor::{MetricsCollector, HealthChecker, MonitoringDashboard};
 
 #[cfg(feature = "distributed")]
-pub use cortex_backup::{BackupManager, RestoreManager, ReplicationManager};
+pub use coretex_backup::{BackupManager, RestoreManager, ReplicationManager};
 
-pub use cortex_security::{AuthManager, TokenManager, PermissionManager};
-pub use cortex_perf::{QueryCache, QueryRouter, ParallelQueryExecutor, QueryOptimizer};
-pub use cortex_cli::run_cli;
+pub use coretex_security::{AuthManager, TokenManager, PermissionManager};
+pub use coretex_perf::{QueryCache, QueryRouter, ParallelQueryExecutor, QueryOptimizer};
+pub use coretex_cli::run_cli;
 
 pub use scheduler::{Scheduler, SchedulerConfig, SchedulerStats, PriorityQueue, SchedulingPolicy};
 pub use worker::{TaskExecutor, ExecutorConfig, HeartbeatManager, WorkerRegistration};
@@ -121,9 +77,9 @@ pub use discovery::{EtcdClient, ConsulClient, ServiceRegistration};
 pub use coordinator::{LeaderElection, ElectionConfig, ElectionState};
 
 pub mod prelude {
-    pub use crate::cortex_core::*;
-    pub use crate::cortex_storage::*;
-    pub use crate::cortex_index::*;
+    pub use crate::coretex_core::*;
+    pub use crate::coretex_storage::*;
+    pub use crate::coretex_index::*;
 }
 
 #[cfg(test)]
@@ -144,15 +100,15 @@ mod tests {
     }
 }
 
-pub struct CortexDB {
+pub struct CoretexDB {
     storage: Box<dyn StorageEngine>,
     index_manager: IndexManager,
-    config: CortexConfig,
+    config: CoretexConfig,
 }
 
 impl CortexDB {
-    pub async fn new() -> Result<Self, CortexError> {
-        let config = CortexConfig::default();
+    pub async fn new() -> Result<Self, CoretexError> {
+        let config = CoretexConfig::default();
         let storage = Box::new(MemoryStorage::new());
         storage.init().await?;
         

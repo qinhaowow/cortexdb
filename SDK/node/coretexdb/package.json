@@ -1,0 +1,28 @@
+{
+  "name": "coretexdb-node",
+  "version": "1.0.0",
+  "description": "Official Node.js SDK for CoretexDB Vector Database",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "coretexdb",
+    "vector-database",
+    "embedding",
+    "similarity-search"
+  ],
+  "author": "CoretexDB Team",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "jest": "^29.7.0",
+    "typescript": "^5.3.0"
+  }
+}

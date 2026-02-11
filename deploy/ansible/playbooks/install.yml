@@ -1,0 +1,102 @@
+---
+- name: Install CoretexDB
+  hosts: coretexdb
+  become: yes
+  vars:
+    coretexdb_version: latest
+    coretexdb_data_dir: /var/lib/coretexdb
+    coretexdb_log_dir: /var/log/coretexdb
+    coretexdb_user: coretexdb
+    coretexdb_group: coretexdb
+
+  tasks:
+    - name: Create coretexdb group
+      group:
+        name: "{{ coretexdb_group }}"
+        state: present
+        gid: 1000
+
+    - name: Create coretexdb user
+      user:
+        name: "{{ coretexdb_user }}"
+        group: "{{ coretexdb_group }}"
+        uid: 1000
+        shell: /sbin/nologin
+        create_home: no
+        system: yes
+        state: present
+
+    - name: Create required directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ coretexdb_user }}"
+        group: "{{ coretexdb_group }}"
+        mode: 0755
+      loop:
+        - "{{ coretexdb_data_dir }}"
+        - "{{ coretexdb_log_dir }}"
+        - /etc/coretexdb
+        - /opt/coretexdb
+
+    - name: Download CoretexDB binary
+      get_url:
+        url: "https://github.com/coretexdb/coretexdb/releases/download/v{{ coretexdb_version }}/cortex-linux-amd64"
+        dest: /opt/coretexdb/cortex
+        mode: 0755
+        owner: "{{ coretexdb_user }}"
+        group: "{{ coretexdb_group }}"
+      ignore_errors: yes
+
+    - name: Copy CoretexDB binary from local
+      copy:
+        src: files/cortex
+        dest: /opt/coretexdb/cortex
+        mode: 0755
+        owner: "{{ coretexdb_user }}"
+        group: "{{ coretexdb_group }}"
+      when: inventory_hostname in groups['local']
+
+    - name: Create systemd service file
+      template:
+        src: templates/cortex.service.j2
+        dest: /etc/systemd/system/cortex.service
+        mode: 0644
+        owner: root
+        group: root
+
+    - name: Reload systemd daemon
+      systemd:
+        daemon_reload: yes
+
+    - name: Enable and start CoretexDB service
+      systemd:
+        name: cortex
+        enabled: yes
+        state: started
+
+    - name: Wait for CoretexDB to be ready
+      uri:
+        url: "http://localhost:8080/api/health"
+        status_code: 200
+        timeout: 30
+      register: result
+      until: result.status == 200
+      retries: 30
+      delay: 2
+
+    - name: Verify CoretexDB is running
+      command: systemctl status cortex
+      register: systemctl_status
+      failed_when: "'active (running)' not in systemctl_status.stdout"
+
+    - name: Display installation info
+      debug:
+        msg: |
+          ========================================
+          CoretexDB installed successfully!
+          ========================================
+          Web UI: http://{{ ansible_host }}:8080
+          gRPC:   {{ ansible_host }}:50051
+          Health: http://{{ ansible_host }}:8080/api/health
+          ========================================

@@ -1,0 +1,88 @@
+groups:
+  - name: coretexdb_alerts
+    rules:
+      - alert: CoretexDBDown
+        expr: up{job="coretexdb"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "CoretexDB instance is down"
+          description: "CoretexDB instance {{ $labels.instance }} has been down for more than 1 minute."
+
+      - alert: CoretexDBHighCPU
+        expr: rate(process_cpu_seconds_total{job="coretexdb"}[5m]) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CoretexDB high CPU usage"
+          description: "CoretexDB CPU usage is above 80% on {{ $labels.instance }}"
+
+      - alert: CoretexDBHighMemory
+        expr: process_resident_memory_bytes{job="coretexdb"} / process_virtual_memory_max_bytes{job="coretexdb"} > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CoretexDB high memory usage"
+          description: "CoretexDB memory usage is above 80% on {{ $labels.instance }}"
+
+      - alert: CoretexDBDiskSpaceLow
+        expr: (1 - (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"})) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CoretexDB disk space low"
+          description: "Disk space is below 20% on {{ $labels.instance }}"
+
+      - alert: CoretexDBHighRequestLatency
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="coretexdb"}[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CoretexDB high request latency"
+          description: "95th percentile latency is above 1s on {{ $labels.instance }}"
+
+      - alert: CoretexDBHighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total{job="coretexdb"}[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "CoretexDB high error rate"
+          description: "Error rate is above 5% on {{ $labels.instance }}"
+
+      - alert: CoretexDBLicenseExpiring
+        expr: coretexdb_license_days_remaining < 7
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "CoretexDB license expiring soon"
+          description: "License will expire in {{ $value }} days"
+
+      - alert: CoretexDBLicenseExpired
+        expr: coretexdb_license_days_remaining < 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "CoretexDB license expired"
+          description: "License has expired! Please renew immediately."
+
+  - name: coretexdb_recording_rules
+    rules:
+      - record: coretexdb:http_requests:rate5m
+        expr: rate(http_requests_total{job="coretexdb"}[5m])
+
+      - record: coretexdb:http_request_duration_seconds:histogram_quantile95
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job="coretexdb"}[5m]))
+
+      - record: coretexdb:process_resident_memory_bytes:avg
+        expr: avg_over_time(process_resident_memory_bytes{job="coretexdb"}[5m])
+
+      - record: coretexdb:vector_search_duration_seconds:histogram_quantile95
+        expr: histogram_quantile(0.95, rate(vector_search_duration_seconds_bucket[5m]))

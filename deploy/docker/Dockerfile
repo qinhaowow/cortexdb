@@ -1,33 +1,38 @@
-# CortexDB Dockerfile
-FROM rust:1.70 as builder
+FROM rust:1.75-alpine AS builder
 
 WORKDIR /app
 
-# Copy source code
-COPY . .
+RUN apk add --no-cache openssl-dev musl-dev
 
-# Build CortexDB
-RUN cargo build --release
+COPY Cargo.toml ./
+COPY Cargo.lock ./
+COPY src/ ./src/
 
-# Final image
-FROM debian:bullseye-slim
+RUN cargo build --release --bin cortex
+
+FROM alpine:3.19
+
+RUN apk add --no-cache ca-certificates curl libstdc++ openssl
 
 WORKDIR /app
 
-# Install dependencies
-RUN apt-get update && apt-get install -y \
-    ca-certificates \
-    libssl-dev \
-    && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /app/target/release/cortex ./cortex
+COPY --from=builder /app/LICENSE* ./
+COPY --from=builder /app/README.md ./
 
-# Copy binary
-COPY --from=builder /app/target/release/cortex /usr/local/bin/
+ENV CORTEXDB_DATA_DIR=/data
+ENV CORTEXDB_LOG_DIR=/var/log/coretexdb
 
-# Expose ports
-EXPOSE 8000 9000 5432
+VOLUME ["/data", "/var/log/coretexdb"]
 
-# Set environment variables
-ENV RUST_LOG=info
+EXPOSE 8080 50051
 
-# Run CortexDB
-CMD ["cortex", "--host", "0.0.0.0", "--port", "8000"]
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:8080/api/health || exit 1
+
+ENTRYPOINT ["./cortex"]
+
+LABEL \
+    maintainer="CoretexDB Team <support@coretexdb.io>" \
+    coretexdb.version="${VERSION:-latest}" \
+    coretexdb.mode="standalone"

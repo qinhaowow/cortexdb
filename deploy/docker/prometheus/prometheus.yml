@@ -1,0 +1,45 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'coretexdb'
+    static_configs:
+      - targets: ['coretexdb:8080']
+    metrics_path: /metrics
+    scrape_interval: 5s
+
+  - job_name: 'coretexdb-grpc'
+    static_configs:
+      - targets: ['coretexdb:50051']
+    metrics_path: /grpc/metrics
+    scrape_interval: 5s
+
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+    scrape_interval: 30s
+
+remote_write:
+  - url: "${PROMETHEUS_REMOTE_WRITE_URL}"
+    basic_auth:
+      username: "${PROMETHEUS_REMOTE_WRITE_USER}"
+      password_file: "${PROMETHEUS_REMOTE_WRITE_PASSWORD_FILE}"
+
+storage:
+  tsdb:
+    path: /prometheus
+    retention.time: 30d
+    retention.size: 50GB

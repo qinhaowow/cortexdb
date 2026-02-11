@@ -1,0 +1,289 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: coretexdb
+  namespace: coretexdb
+  labels:
+    app.kubernetes.io/name: coretexdb
+    app.kubernetes.io/instance: coretexdb-ha
+spec:
+  serviceName: coretexdb-headless
+  replicas: 3
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: coretexdb
+      app.kubernetes.io/instance: coretexdb-ha
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: coretexdb
+        app.kubernetes.io/instance: coretexdb-ha
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app.kubernetes.io/name
+                      operator: In
+                      values:
+                        - coretexdb
+                topologyKey: kubernetes.io/hostname
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 50
+              preference:
+                matchExpressions:
+                  - key: node-role.kubernetes.io/worker
+                    operator: Exists
+      terminationGracePeriodSeconds: 30
+      serviceAccountName: coretexdb
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: coretexdb
+          image: coretexdb:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: grpc
+              containerPort: 50051
+          env:
+            - name: CORTEXDB_MODE
+              value: "distributed"
+            - name: CORTEXDB_REPLICA_COUNT
+              value: "3"
+            - name: CORTEXDB_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          envFrom:
+            - configMapRef:
+                name: coretexdb-config-ha
+            - secretRef:
+                name: coretexdb-secrets
+          resources:
+            requests:
+              cpu: "1000m"
+              memory: "2Gi"
+            limits:
+              cpu: "4000m"
+              memory: "16Gi"
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: config
+              mountPath: /etc/coretexdb
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          startupProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 30
+      volumes:
+        - name: config
+          configMap:
+            name: coretexdb-config-ha
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: fast-storage
+        resources:
+          requests:
+            storage: 200Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: coretexdb-headless
+  namespace: coretexdb
+  labels:
+    app.kubernetes.io/name: coretexdb
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: coretexdb
+    app.kubernetes.io/instance: coretexdb-ha
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+    - name: grpc
+      port: 50051
+      targetPort: grpc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: coretexdb
+  namespace: coretexdb
+  labels:
+    app.kubernetes.io/name: coretexdb
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/name: coretexdb
+    app.kubernetes.io/instance: coretexdb-ha
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+    - name: grpc
+      port: 50051
+      targetPort: grpc
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: coretexdb-hpa
+  namespace: coretexdb
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: StatefulSet
+    name: coretexdb
+  minReplicas: 3
+  maxReplicas: 15
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+    - type: Pods
+      pods:
+        metric:
+          name: http_requests_per_second
+        target:
+          type: AverageValue
+          averageValue: "1000"
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Percent
+          value: 10
+          periodSeconds: 60
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 15
+        - type: Pods
+          value: 2
+          periodSeconds: 15
+      selectPolicy: Max
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: coretexdb-pdb
+  namespace: coretexdb
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: coretexdb
+      app.kubernetes.io/instance: coretexdb-ha
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coretexdb-config-ha
+  namespace: coretexdb
+data:
+  mode: distributed
+  cluster_size: "3"
+  replication_factor: "3"
+  log_level: info
+  http_port: "8080"
+  grpc_port: "50051"
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: coretexdb-network-policy
+  namespace: coretexdb
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: coretexdb
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 50051
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: coretexdb
+      ports:
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 50051
+  egress:
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 53
+        - protocol: UDP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
