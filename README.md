@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # CoretexDB - 企业级多模态向量数据库
 
 <div align="center">
@@ -258,3 +259,297 @@ cargo tarpaulin --workspace
 **用 ❤️ 构建**
 
 </div>
+=======
+# CoretexDB
+
+企业级分布式向量数据库
+
+## 项目简介
+
+CoretexDB 是一款高性能的企业级分布式向量数据库，专为 AI 应用场景设计。它支持向量检索、全文搜索、标量查询等多种数据访问模式，并提供完整的 SDK 和部署解决方案。
+
+## 核心特性
+
+### 🔍 强大的向量检索
+- 支持多种向量索引算法：HNSW、DiskANN、Brute Force
+- 支持搜索（向量混合 + 标量）
+- 支持实时向量插入和更新
+- 高精度近似最近邻搜索
+
+### 🗄️ 灵活的存储引擎
+- 自研 CoretexDB 存储引擎
+- 支持持久化存储和内存存储
+- 自动压缩和优化
+- 完善的事务支持（MVCC）
+
+### 🌐 多协议支持
+- gRPC 高性能接口
+- RESTful API
+- PostgreSQL 兼容协议
+- GraphQL 接口
+- Python SDK 集成
+
+### 📦 多语言 SDK
+- **Go SDK**: 异步客户端，高性能
+- **Java SDK**: Maven 包管理
+- **Node.js SDK**: TypeScript 支持
+- **C++ SDK**: CMake 构建
+
+### 🐍 Python 生态系统
+- LangChain 集成
+- HuggingFace 集成
+- OpenAI 集成
+- 完整的 Python 客户端
+
+### 🔒 企业级功能
+- 分布式集群支持
+- 自动分片和负载均衡
+- 备份和恢复
+- 监控和告警
+- 安全认证和加密
+
+## 快速开始
+
+### Docker 部署
+
+```bash
+# 启动单节点
+docker-compose -f deploy/docker/docker-compose.yml up -d
+
+# 访问页面
+# Grafana: http://localhost:3001 (admin/admin)
+# Prometheus: http://localhost:9090
+```
+
+### Kubernetes 部署
+
+```bash
+# 单节点部署
+kubectl apply -f deploy/k8s/
+
+# 高可用部署
+kubectl apply -f deploy/kubernetes/
+```
+
+### Helm 部署
+
+```bash
+# 添加 Helm 仓库
+helm repo add coretexdb https://qinhaowow.github.io/cortexdb-helm
+
+# 安装
+helm install my-coretexdb coretexdb/coretexdb -f deploy/helm/coretexdb/values.yaml
+```
+
+### 从源码编译
+
+```bash
+# 克隆仓库
+git clone https://github.com/qinhaowow/cortexdb.git
+cd cortexdb
+
+# 编译
+cargo build --release
+
+# 运行
+./target/release/coretexdb --config src/coretex_core/config.rs
+```
+
+## SDK 使用示例
+
+### Go
+
+```go
+package main
+
+import (
+    "context"
+    "log"
+    
+    "github.com/qinhaowow/cortexdb/SDK/go/coretexdb"
+)
+
+func main() {
+    client := coretexdb.NewClient("localhost:50051")
+    
+    ctx := context.Background()
+    
+    // 插入向量
+    vectors := [][]float32{
+        {0.1, 0.2, 0.3},
+        {0.4, 0.5, 0.6},
+    }
+    
+    err := client.Insert(ctx, "my_collection", vectors)
+    if err != nil {
+        log.Fatal(err)
+    }
+    
+    // 搜索向量
+    query := []float32{0.1, 0.2, 0.3}
+    results, err := client.Search(ctx, "my_collection", query, 10)
+    if err != nil {
+        log.Fatal(err)
+    }
+    
+    log.Printf("Found %d results", len(results))
+}
+```
+
+### Python
+
+```python
+from coretexdb import CoretexDB
+
+# 连接数据库
+client = CoretexDB(host="localhost", port=50051)
+
+# 创建集合
+client.create_collection("my_collection", dimension=768)
+
+# 插入向量
+vectors = [
+    [0.1] * 768,
+    [0.2] * 768,
+]
+client.insert("my_collection", vectors)
+
+# 搜索向量
+query = [0.1] * 768
+results = client.search("my_collection", query, top_k=10)
+
+for result in results:
+    print(f"ID: {result.id}, Score: {result.score}")
+```
+
+### Node.js
+
+```typescript
+import { CoretexDB } from 'coretexdb';
+
+const client = new CoretexDB({
+  host: 'localhost',
+  port: 50051,
+});
+
+async function main() {
+  // 创建集合
+  await client.createCollection('my_collection', { dimension: 768 });
+  
+  // 插入向量
+  const vectors = [
+    new Float32Array(768).fill(0.1),
+    new Float32Array(768).fill(0.2),
+  ];
+  await client.insert('my_collection', vectors);
+  
+  // 搜索向量
+  const query = new Float32Array(768).fill(0.1);
+  const results = await client.search('my_collection', query, { topK: 10 });
+  
+  console.log(`Found ${results.length} results`);
+}
+```
+
+## 项目结构
+
+```
+CoretexDataBases/
+├── src/
+│   ├── coretex_api/        # API 层（gRPC、REST、Python）
+│   ├── coretex_backup/      # 备份和恢复
+│   ├── coretex_cli/        # 命令行工具
+│   ├── coretex_core/       # 核心配置和错误类型
+│   ├── coretex_distributed/ # 分布式协调
+│   ├── coretex_index/      # 索引管理
+│   ├── coretex_monitor/    # 监控和告警
+│   ├── coretex_perf/       # 性能优化
+│   ├── coretex_query/      # 查询处理
+│   ├── coretex_security/   # 安全认证
+│   ├── coretex_storage/    # 存储引擎
+│   └── coretex_utils/      # 工具函数
+├── SDK/                     # 多语言 SDK
+│   ├── cpp/
+│   ├── go/
+│   ├── java/
+│   └── node/
+├── deploy/                  # 部署配置
+│   ├── docker/
+│   ├── kubernetes/
+│   ├── helm/
+│   ├── terraform/
+│   ├── ansible/
+│   └── cicd/
+├── python/                  # Python 包
+└── tests/                   # 测试代码
+```
+
+## 部署架构
+
+### Docker Compose（开发/测试）
+
+```
+┌─────────────────────────────────────────┐
+│         Docker Compose                   │
+│  ┌───────────┐                          │
+│  │ CoretexDB  │                          │
+│  └───────────┘                          │
+│  ┌───────────┐ ┌───────────┐            │
+│  │ Grafana   │ │Prometheus │            │
+│  └───────────┘ └───────────┘            │
+└─────────────────────────────────────────┘
+```
+
+### Kubernetes（生产）
+
+```
+┌─────────────────────────────────────────────────────┐
+│                    Kubernetes                        │
+│  ┌─────────────────────────────────────────────┐   │
+│  │           CoretexDB Cluster                  │   │
+│  │  ┌─────┐ ┌─────┐ ┌─────┐ ┌─────┐ ┌─────┐  │   │
+│  │  │ Pod │ │ Pod │ │ Pod │ │ Pod │ │ Pod │  │   │
+│  │  └──┬──┘ └──┬──┘ └──┬──┘ └──┬──┘ └──┬──┘  │   │
+│  │     │        │        │        │        │     │   │
+│  │  ┌──┴──┐ ┌──┴──┐ ┌──┴──┐ ┌──┴──┐ ┌──┴──┐  │   │
+│  │  │ PVC │ │ PVC │ │ PVC │ │ PVC │ │ PVC │  │   │
+│  │  └─────┘ └─────┘ └─────┘ └─────┘ └─────┘  │   │
+│  └─────────────────────────────────────────────┘   │
+│  ┌─────────────────────────────────────────────┐   │
+│  │           Monitoring Stack                   │   │
+│  │  ┌─────────┐ ┌─────────┐ ┌────────────────┐ │   │
+│  │  │Grafana  │ │Prometheus│ │Alertmanager   │ │   │
+│  │  └─────────┘ └─────────┘ └────────────────┘ │   │
+│  └─────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────┘
+```
+
+## 性能基准
+
+| 指标 | 数值 |
+|------|------|
+| 向量插入速度 | 100,000 向量/秒 |
+| 向量搜索延迟 (99%) | < 10ms |
+| 支持维度 | 最高 4096 |
+| 召回率 (HNSW) | > 95% |
+| 集群节点数 | 最多 1000 |
+
+## 文档
+
+- [API 文档](https://github.com/qinhaowow/cortexdb/wiki/API)
+- [SDK 使用指南](https://github.com/qinhaowow/cortexdb/wiki/SDK)
+- [部署指南](https://github.com/qinhaowow/cortexdb/wiki/Deployment)
+- [架构设计](https://github.com/qinhaowow/cortexdb/wiki/Architecture)
+
+## 许可证
+
+本项目采用 MIT 许可证。
+
+## 贡献
+
+欢迎提交 Issue 和 Pull Request！
+
+## 联系方式
+
+- GitHub: [https://github.com/qinhaowow/cortexdb](https://github.com/qinhaowow/cortexdb)
+>>>>>>> 24c52bf (docs: Update README with CoretexDB branding and comprehensive documentation)
