@@ -1,6 +1,5 @@
 pub mod mvcc;
 pub mod wal;
-pub mod consistency;
 pub mod manager;
 
 use std::sync::Arc;
@@ -59,8 +58,6 @@ pub enum TransactionError {
     WalError(#[from] wal::WALError),
     #[error("MVCC error: {0}")]
     MvccError(#[from] mvcc::MVCCError),
-    #[error("Consistency error: {0}")]
-    ConsistencyError(#[from] consistency::ConsistencyError),
 }
 
 impl Transaction {

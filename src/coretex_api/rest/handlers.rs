@@ -1,4 +1,4 @@
-﻿//! Request handlers for coretexdb REST API.
+//! Request handlers for coretexdb REST API.
 //!
 //! This module provides the request handling functions for the coretexdb REST API, including:
 //! - Collection management handlers
@@ -652,27 +652,6 @@ pub mod search_handlers {
         );
         response.into_response()
     }
-
-    /// Perform hybrid search (vector + scalar)
-    pub async fn hybrid_search(
-        State(state): State<Arc<ApiServerState>>,
-        Path(params): Path<HashMap<String, String>>,
-        Json(request): Json<serde_json::Value>,
-    ) -> impl axum::response::IntoResponse {
-        let start_time = Instant::now();
-        let name = params.get("name").unwrap();
-
-        // For now, we'll return a placeholder response
-        // In a real implementation, we'd execute a hybrid search
-        let response = ApiSuccessResponse::new(
-            vec![],
-            Some(serde_json::json!({
-                "count": 0,
-                "time_ms": start_time.elapsed().as_millis() as f64,
-            })),
-        );
-        response.into_response()
-    }
 }
 
 // ============================================================================
@@ -684,7 +663,7 @@ pub mod index_handlers {
     use super::*;
     use crate::cortex_index::scalar::ScalarIndexType;
 
-    /// List indexes for a collection
+/// List indexes for a collection
     pub async fn list_indexes(
         State(state): State<Arc<ApiServerState>>,
         Path(params): Path<HashMap<String, String>>,

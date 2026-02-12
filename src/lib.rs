@@ -28,7 +28,6 @@ pub mod transaction;
 pub mod scheduler;
 pub mod worker;
 pub mod clustering;
-pub mod sharding;
 pub mod discovery;
 pub mod coordinator;
 
@@ -72,7 +71,6 @@ pub use coretex_cli::run_cli;
 pub use scheduler::{Scheduler, SchedulerConfig, SchedulerStats, PriorityQueue, SchedulingPolicy};
 pub use worker::{TaskExecutor, ExecutorConfig, HeartbeatManager, WorkerRegistration};
 pub use clustering::{StreamingKMeans, BIRCH, ANNIndex, AnnoyIndex, HNSWIndex, LSHIndex};
-pub use sharding::{ConsistentHash, HashRing, ShardBalancer, LoadBalancer};
 pub use discovery::{EtcdClient, ConsulClient, ServiceRegistration};
 pub use coordinator::{LeaderElection, ElectionConfig, ElectionState};
 

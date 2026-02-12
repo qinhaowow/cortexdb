@@ -1,6 +1,5 @@
 pub mod rest;
 pub mod grpc;
-pub mod graphql;
 pub mod pg;
 
 use std::sync::Arc;
@@ -13,7 +12,6 @@ pub struct ApiManager {
 pub struct ApiManagerInner {
     rest_server: Option<rest::RestServer>,
     grpc_server: Option<grpc::GrpcServer>,
-    graphql_server: Option<graphql::GraphqlServer>,
     pg_server: Option<pg::PgServer>,
 }
 
@@ -22,7 +20,6 @@ impl ApiManagerInner {
         Self {
             rest_server: None,
             grpc_server: None,
-            graphql_server: None,
             pg_server: None,
         }
     }
@@ -37,6 +34,9 @@ impl ApiManager {
 
     pub async fn start_rest_server(&self, address: &str) -> Result<(), ApiError> {
         let mut inner = self.inner.write().await;
+        if inner.rest_server.is_some() {
+            return Err(ApiError::ServerAlreadyRunning);
+        }
         let server = rest::RestServer::new(address).await?;
         server.start().await?;
         inner.rest_server = Some(server);
@@ -45,22 +45,20 @@ impl ApiManager {
 
     pub async fn start_grpc_server(&self, address: &str) -> Result<(), ApiError> {
         let mut inner = self.inner.write().await;
+        if inner.grpc_server.is_some() {
+            return Err(ApiError::ServerAlreadyRunning);
+        }
         let server = grpc::GrpcServer::new(address).await?;
         server.start().await?;
         inner.grpc_server = Some(server);
         Ok(())
     }
 
-    pub async fn start_graphql_server(&self, address: &str) -> Result<(), ApiError> {
-        let mut inner = self.inner.write().await;
-        let server = graphql::GraphqlServer::new(address).await?;
-        server.start().await?;
-        inner.graphql_server = Some(server);
-        Ok(())
-    }
-
     pub async fn start_pg_server(&self, address: &str) -> Result<(), ApiError> {
         let mut inner = self.inner.write().await;
+        if inner.pg_server.is_some() {
+            return Err(ApiError::ServerAlreadyRunning);
+        }
         let server = pg::PgServer::new(address).await?;
         server.start().await?;
         inner.pg_server = Some(server);
@@ -78,10 +76,6 @@ impl ApiManager {
             server.stop().await?;
         }
         
-        if let Some(server) = inner.graphql_server.take() {
-            server.stop().await?;
-        }
-        
         if let Some(server) = inner.pg_server.take() {
             server.stop().await?;
         }
@@ -96,8 +90,6 @@ pub enum ApiError {
     RestError(#[from] rest::RestError),
     #[error("gRPC server error: {0}")]
     GrpcError(#[from] grpc::GrpcError),
-    #[error("GraphQL server error: {0}")]
-    GraphqlError(#[from] graphql::GraphqlError),
     #[error("PostgreSQL server error: {0}")]
     PgError(#[from] pg::PgError),
     #[error("Server already running")]

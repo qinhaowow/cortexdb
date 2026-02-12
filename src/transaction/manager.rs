@@ -1,11 +1,10 @@
 use std::collections::HashMap;
 use std::path::Path;
-use crate::transaction::{mvcc::MVCCManager, wal::WAL, consistency::ConsistencyManager, Transaction, TransactionState, TransactionError};
+use crate::transaction::{mvcc::MVCCManager, wal::WAL, Transaction, TransactionState, TransactionError};
 
 pub struct TransactionManagerInner {
     mvcc: MVCCManager,
     wal: Option<WAL>,
-    consistency: ConsistencyManager,
     active_transactions: HashMap<u64, Transaction>,
     next_tx_id: u64,
 }
@@ -13,12 +12,10 @@ pub struct TransactionManagerInner {
 impl TransactionManagerInner {
     pub async fn new() -> Self {
         let mvcc = MVCCManager::new().await;
-        let consistency = ConsistencyManager::new(crate::transaction::consistency::ConsistencyLevel::ReadCommitted);
         
         Self {
             mvcc,
             wal: None,
-            consistency,
             active_transactions: HashMap::new(),
             next_tx_id: 1,
         }

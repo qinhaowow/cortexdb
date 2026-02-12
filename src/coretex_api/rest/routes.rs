@@ -1,4 +1,4 @@
-﻿//! Route definitions for coretexdb REST API.
+//! Route definitions for coretexdb REST API.
 //!
 //! This module provides the route setup and configuration for the coretexdb REST API, including:
 //! - Collection management routes
@@ -55,8 +55,7 @@ pub fn setup_routes(state: Arc<ApiServerState>) -> Router {
     // Search routes
     let search_routes = Router::new()
         .route("/collections/:name/search", axum::routing::post(search_handlers::vector_search))
-        .route("/collections/:name/query", axum::routing::post(search_handlers::scalar_query))
-        .route("/collections/:name/hybrid", axum::routing::post(search_handlers::hybrid_search));
+        .route("/collections/:name/query", axum::routing::post(search_handlers::scalar_query));
 
     // Index routes
     let index_routes = Router::new()

@@ -1,4 +1,4 @@
-﻿//! Storage engine for coretexdb
+//! Storage engine for coretexdb
 
 use async_trait::async_trait;
 use std::error::Error;

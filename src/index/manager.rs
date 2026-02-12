@@ -1,12 +1,10 @@
 use std::sync::{Arc, RwLock};
 use std::collections::HashMap;
-use crate::index::{vector, scalar, fulltext, graph};
+use crate::index::{vector, scalar};
 
 pub enum IndexType {
     Vector { algorithm: String },
     Scalar { algorithm: String },
-    FullText,
-    Graph,
 }
 
 pub trait Index: Send + Sync {
@@ -80,38 +78,6 @@ impl IndexManager {
             }
         };
 
-        let mut indexes = self.indexes.write().unwrap();
-        if indexes.contains_key(&name) {
-            return Err(IndexManagerError::IndexAlreadyExists(name));
-        }
-
-        indexes.insert(name, index.clone());
-        Ok(index)
-    }
-
-    pub fn create_fulltext_index(
-        &self,
-        name: String,
-        analyzer: String,
-    ) -> Result<Arc<dyn Index>, IndexManagerError> {
-        let index = Arc::new(fulltext::FullTextIndex::new(analyzer));
-        
-        let mut indexes = self.indexes.write().unwrap();
-        if indexes.contains_key(&name) {
-            return Err(IndexManagerError::IndexAlreadyExists(name));
-        }
-
-        indexes.insert(name, index.clone());
-        Ok(index)
-    }
-
-    pub fn create_graph_index(
-        &self,
-        name: String,
-        edge_type: String,
-    ) -> Result<Arc<dyn Index>, IndexManagerError> {
-        let index = Arc::new(graph::GraphIndex::new(edge_type));
-        
         let mut indexes = self.indexes.write().unwrap();
         if indexes.contains_key(&name) {
             return Err(IndexManagerError::IndexAlreadyExists(name));

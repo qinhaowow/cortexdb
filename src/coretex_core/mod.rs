@@ -1,4 +1,4 @@
-﻿//! Core data structures for coretexdb
+//! Core data structures for coretexdb
 
 pub mod types;
 pub mod schema;

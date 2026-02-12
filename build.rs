@@ -6,7 +6,7 @@ fn main() {
 
     let proto_dir = Path::new("src/cortex_api/grpc/proto");
     let proto_files = vec![
-        proto_dir.join("cortexdb.proto"),
+        proto_dir.join("coretexdb.proto"),
     ];
 
     compile_protos(&proto_files).unwrap();
